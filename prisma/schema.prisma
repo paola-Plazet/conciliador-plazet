@@ -1,0 +1,159 @@
+// Conciliador Plazet — esquema de base de datos
+// Prisma 7 + SQLite (adapter better-sqlite3)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// Una tienda / punto de venta de Habbie
+model Store {
+  id             Int             @id @default(autoincrement())
+  code           String          @unique // B1, B2, B3, PRIN, JP
+  name           String
+  alegraBodega   String // texto EXACTO de la columna BODEGA en Alegra
+  establishment  String? // CODIGO ESTABLECIMIENTO del datafono
+  terminalVisa   String?
+  terminalMaster String?
+  active         Boolean         @default(true)
+  cashRefs       CashReference[]
+}
+
+/// Referencia de consignación de efectivo del banco -> tienda
+/// (cada tienda consigna con una o varias referencias fijas)
+model CashReference {
+  id        Int    @id @default(autoincrement())
+  reference String @unique
+  storeId   Int
+  store     Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+}
+
+/// Día festivo / no hábil en Colombia (editable)
+model Holiday {
+  id   Int    @id @default(autoincrement())
+  date String @unique // YYYY-MM-DD
+  name String
+}
+
+/// Una corrida de conciliación (LEGADO — se conserva para no perder historial;
+/// el flujo actual usa las tablas acumuladas de abajo)
+model Run {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  label       String?
+  periodStart String? // YYYY-MM-DD
+  periodEnd   String? // YYYY-MM-DD
+
+  // Datos parseados y resultados (JSON serializado)
+  salesJson       String  @default("[]") // facturas Alegra deduplicadas
+  bankJson        String  @default("[]") // movimientos banco efectivo
+  dataphoneJson   String  @default("[]") // transacciones datafono
+  qrBankJson      String  @default("[]") // pagos QR del extracto del datafono
+  resultsJson     String  @default("[]") // conciliación calculada
+  adjustmentsJson String  @default("[]") // ajustes manuales
+}
+
+// ───────────── Datos acumulados (conciliación continua por mes) ─────────────
+// Cada carga REEMPLAZA su rango de fechas: el archivo es la fuente de verdad
+// del periodo que cubre. Los meses cerrados no se tocan.
+
+/// Una venta (transacción/factura de Alegra o del sistema histórico)
+model Sale {
+  id        Int    @id @default(autoincrement())
+  date      String // YYYY-MM-DD
+  invoice   String
+  bodega    String // texto crudo de la cuenta/bodega de origen
+  storeCode String?
+  method    String // EFECTIVO | TARJETA_CREDITO | TARJETA_DEBITO | TRANSFERENCIA | OTRO
+  amount    Float
+  source    String @default("alegra") // alegra | historico
+
+  @@index([date])
+}
+
+/// Movimiento del extracto de la cuenta de EFECTIVO
+model BankEntry {
+  id        Int     @id @default(autoincrement())
+  date      String // YYYY-MM-DD
+  concept   String
+  amount    Float
+  reference String?
+  kind      String // RECAUDO_EFECTIVO | CONSIG_TRANSFER | OTRO
+
+  @@index([date])
+}
+
+/// Pago QR del extracto de la cuenta del DATAFONO (CSV 191)
+model QrEntry {
+  id      Int    @id @default(autoincrement())
+  date    String // YYYY-MM-DD
+  concept String
+  amount  Float
+  payer   String
+
+  @@index([date])
+}
+
+/// Operación aprobada del reporte de liquidaciones (settlement) de Mercado Pago.
+/// Es el "recaudo" del canal Mercadopago; no trae tienda (se compara a nivel
+/// empresa, igual que el QR).
+model MercadopagoEntry {
+  id      Int     @id @default(autoincrement())
+  date    String // YYYY-MM-DD (fecha de origen)
+  opId    String // ID de operación en Mercado Pago
+  medio   String // Tarjeta de crédito | Transferencia bancaria | ...
+  bruto   Float // valor de la compra
+  neto    Float // monto neto de la operación (tras comisiones y retenciones)
+  release String? // fecha de liberación del dinero
+
+  @@index([date])
+}
+
+/// Transacción del reporte Conciliar del datafono
+model DataphoneEntry {
+  id            Int     @id @default(autoincrement())
+  txDate        String // YYYY-MM-DD
+  depositDate   String
+  establishment String
+  storeCode     String?
+  franchise     String
+  cardType      String
+  gross         Float
+  net           Float
+  terminal      String
+
+  @@index([txDate])
+}
+
+/// Estado de cierre de un mes de conciliación
+model MonthStatus {
+  id       Int       @id @default(autoincrement())
+  month    String    @unique // YYYY-MM
+  closed   Boolean   @default(false)
+  closedAt DateTime?
+  note     String?
+}
+
+/// Ajuste manual persistente (por id estable del resultado)
+model Adjustment {
+  id         Int    @id @default(autoincrement())
+  resultId   String @unique // id del ConciliationResult (ej. EFECTIVO:B1:2026-06-05)
+  salesDates String // JSON array de YYYY-MM-DD
+  note       String
+}
+
+/// Auditoría de archivos cargados
+model Upload {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  filename  String
+  kind      String // alegra | alegra_trans | banco | datafono | datafono_banco | historico
+  dateFrom  String? // rango de fechas que cubrió (y reemplazó)
+  dateTo    String?
+  rows      Int      @default(0)
+  skipped   Int      @default(0) // filas omitidas por caer en mes cerrado
+}
