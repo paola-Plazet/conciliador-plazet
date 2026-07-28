@@ -1,5 +1,6 @@
 // Conciliador Plazet — esquema de base de datos
-// Prisma 7 + SQLite (adapter better-sqlite3)
+// Prisma 7 + PostgreSQL en Neon (adapter pg), igual que la nómina.
+// Base "conciliador" en la misma instancia Neon de la nómina (datos aparte).
 
 generator client {
   provider = "prisma-client"
@@ -7,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 /// Una tienda / punto de venta de Habbie

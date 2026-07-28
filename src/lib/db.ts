@@ -1,8 +1,13 @@
+import "dotenv/config"; // los scripts de /scripts no cargan .env solos (Next sí)
 import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-const url = process.env.DATABASE_URL ?? "file:./dev.db";
-const adapter = new PrismaBetterSqlite3({ url });
+// PostgreSQL en Neon (base "conciliador"), mismo patrón que la nómina.
+// max amplio: computeLedger + el tablero disparan ~12 consultas en paralelo.
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,
+});
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 

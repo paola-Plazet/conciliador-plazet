@@ -127,6 +127,40 @@ PROBABLE CRUCE (confirmar con Paola):
 PAGOS QR del banco SIN venta (sobró plata): 2× $132.000 SANDRA MILENA 1-jul,
 $63.600 NUBIA 4-jul. QR empresa julio: banco recibió $406.150 MÁS que las ventas.
 
+## 27-jul — MERCADO PAGO: evidencia de la diferencia (mp-cruce.ts)
+89/107 cobros casan con ventas (±8 días por el desfase de facturación web).
+- COBROS SIN VENTA $2.054.645: los graves son 3-jun $42.650, 21-jun $118.250,
+  7-jul $119.950, 8-jul $95.450, 10-jul $77.866, 13-jul $172.003 y $125.400
+  (¡este es el pedido web #NL11667 sin facturar!), 15-jul $84.558+$81.168,
+  17-jul $79.300, 18-jul $87.600. Los 7 del 19 y 21-jul ($970.450) seguramente
+  se facturaron después del 24 → se cierran con settlement fresco (el cargado
+  llega al 21-jul) + Karrot fresco.
+- VENTAS "Mercadopago" SIN COBRO $805.400: fac 8076 $126.600, 8071 $132.400
+  (6-jul), 8309 $189.750, 8308 $62.600 (7-jul), web 281 $115.250 (10-jul),
+  860 $56.900 (14-jul), 1736 $121.900 (21-jul). Despachadas sin plata en MP.
+- PREGUNTA ABIERTA a Paola: ¿generar Excel bonito con estas dos listas?
+- PEDIRLE: settlement de MP del 22-jul a hoy.
+
+## 27-jul — VERCEL: portal Nómina + Conciliaciones (EN CURSO)
+Decisión: DOS proyectos Vercel separados + botones de portal (la nómina es
+Next 14 y el conciliador Next 16 — no se fusionan). Pasos:
+1. ✔ git init + commit inicial del conciliador (ab5dd94, 120 archivos;
+   .gitignore excluye *.db, .env y src/generated). Sin remoto todavía.
+   OJO: no hay gh CLI ni vercel CLI; la nómina publica por git HTTPS normal
+   (credenciales de Windows) → el push al repo nuevo debería funcionar igual.
+2. FALTA DE PAOLA:
+   a. Crear repo vacío en GitHub (sugerido: paola-Plazet/conciliador-plazet,
+      PRIVADO) — yo hago el push.
+   b. Crear base de datos Postgres en Neon (nuevo proyecto "conciliador") y
+      pasarme el DATABASE_URL — la de nómina es aparte, no se mezclan.
+   c. Decidir clave de acceso para la app (irá como env var).
+3. YO DESPUÉS: migrar schema.prisma de sqlite→postgresql (+ @prisma/adapter-pg
+   como nómina), db.ts, prisma db push a Neon, recargar datos con
+   cargar-carpeta apuntando a Neon, middleware de login simple con la clave,
+   push, y Paola importa el repo en Vercel (framework Next, env DATABASE_URL +
+   APP_PASSWORD). Al final: botones "Nómina"/"Conciliaciones" en la nómina
+   (repo C:\Users\Paola Agreda\nomina-colombia) apuntando a las dos URLs.
+
 ## PENDIENTE 25-jul — pedidos de Paola (en orden)
 1. **Volver a revisar y DISMINUIR las diferencias** que quedan (pedido explícito
    24-jul noche). Empezar por: B1 QR 22-jul $646.200; datáfono B3 3/4/7-jul
