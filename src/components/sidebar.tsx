@@ -1,6 +1,11 @@
 "use client";
 
+// Sidebar espejo del de la nómina: mismo degradado, logo Plazet, estilos de
+// ítems (resplandor verde + barrita blanca al activo) y pie con cierre de
+// sesión. Un solo lenguaje visual para todo el portal Plazet.
+
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -10,6 +15,7 @@ import {
   Settings,
   FileSpreadsheet,
   LayoutGrid,
+  LogOut,
 } from "lucide-react";
 
 const NAV = [
@@ -23,23 +29,24 @@ const NAV = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const portalUrl = `${process.env.NEXT_PUBLIC_NOMINA_URL ?? ""}/portal`;
   return (
-    <aside className="w-60 shrink-0 sticky top-0 h-screen overflow-y-auto bg-plazet-950 text-plazet-100 flex flex-col">
-      <div className="px-5 py-6 border-b border-plazet-800">
-        <div className="text-xl font-bold text-white">Conciliador</div>
-        <div className="text-sm text-plazet-300">Plazet · Habbie SAS</div>
+    <aside className="sticky top-0 h-screen w-[260px] shrink-0 z-30 bg-gradient-to-b from-plazet-950 to-plazet-900 text-white flex flex-col">
+      {/* Logo */}
+      <div className="flex flex-col items-center border-b border-plazet-800/50 px-5 py-6">
+        <Image
+          src="/images/logo-plazet-blanco.png"
+          alt="Plazet"
+          width={140}
+          height={42}
+          className="mb-1.5"
+          priority
+        />
+        <p className="text-[11px] text-plazet-400 font-medium">Conciliaciones</p>
       </div>
-      {/* Volver al Portal Plazet (cambiar de app) — arriba, siempre a la vista */}
-      <div className="px-3 pt-3">
-        <a
-          href={`${process.env.NEXT_PUBLIC_NOMINA_URL ?? ""}/portal`}
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-white bg-plazet-800 hover:bg-plazet-700 transition-colors"
-        >
-          <LayoutGrid size={18} />
-          Portal Plazet
-        </a>
-      </div>
-      <nav className="flex-1 px-3 py-4 space-y-1">
+
+      {/* Navigation */}
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active =
             href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -47,20 +54,40 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium transition-all duration-200 relative ${
                 active
-                  ? "bg-plazet-500 text-white"
-                  : "text-plazet-200 hover:bg-plazet-800 hover:text-white"
+                  ? "bg-plazet-500/90 text-white shadow-[0_0_12px_rgba(59,165,93,0.4)]"
+                  : "text-plazet-200 hover:bg-plazet-800/60 hover:text-white"
               }`}
             >
-              <Icon size={18} />
-              {label}
+              {active && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-white rounded-r-full" />
+              )}
+              <Icon size={20} className="shrink-0" />
+              <span>{label}</span>
             </Link>
           );
         })}
+        {/* Cambiar de app */}
+        <a
+          href={portalUrl}
+          className="flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium text-plazet-200 hover:bg-plazet-800/60 hover:text-white transition-all duration-200"
+        >
+          <LayoutGrid size={20} className="shrink-0" />
+          <span>Portal</span>
+        </a>
       </nav>
-      <div className="px-5 py-4 text-xs text-plazet-400 border-t border-plazet-800">
-        Conciliación de efectivo y datáfono
+
+      {/* Footer */}
+      <div className="px-3 py-3 border-t border-plazet-800/50 space-y-1.5">
+        <a
+          href="/api/salir"
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-[10px] text-plazet-300 hover:bg-red-500/20 hover:text-red-300 transition-all duration-200 text-xs font-medium"
+        >
+          <LogOut size={16} />
+          <span>Cerrar sesion</span>
+        </a>
+        <p className="text-[10px] text-plazet-500 text-center mt-1">a company by Habbie SAS</p>
       </div>
     </aside>
   );

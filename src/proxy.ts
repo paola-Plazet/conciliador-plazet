@@ -3,7 +3,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { validarSesion, SESSION_COOKIE } from "./lib/sso";
 
-const PUBLICAS = ["/acceso", "/api/sso"];
+const PUBLICAS = ["/acceso", "/api/sso", "/api/salir"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
