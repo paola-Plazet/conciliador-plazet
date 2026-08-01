@@ -9,6 +9,7 @@ import {
   ListChecks,
   Settings,
   FileSpreadsheet,
+  LayoutGrid,
 } from "lucide-react";
 
 const NAV = [
@@ -48,6 +49,16 @@ export function Sidebar() {
           );
         })}
       </nav>
+      {/* Volver al Portal Plazet (cambiar de app) */}
+      <div className="px-3 pb-2">
+        <a
+          href={`${process.env.NEXT_PUBLIC_NOMINA_URL ?? ""}/portal`}
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-white bg-plazet-800 hover:bg-plazet-700 transition-colors"
+        >
+          <LayoutGrid size={18} />
+          Portal Plazet
+        </a>
+      </div>
       <div className="px-5 py-4 text-xs text-plazet-400 border-t border-plazet-800">
         Conciliación de efectivo y datáfono
       </div>

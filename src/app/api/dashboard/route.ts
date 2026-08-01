@@ -6,6 +6,8 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { computeLedger } from "@/lib/ledger";
+import { loadHolidays } from "@/lib/process";
+import { nextBusinessDay } from "@/lib/dates";
 import { STORES, storeName } from "@/lib/stores";
 
 export const runtime = "nodejs";
@@ -20,18 +22,22 @@ interface DiaEfe {
   late?: boolean;
   qrAlert?: boolean;
   nota?: string;
+  /** pendiente pero AÚN en plazo (se consigna el día hábil siguiente) */
+  enPlazo?: boolean;
 }
 
 export async function GET(request: NextRequest) {
   const month = request.nextUrl.searchParams.get("month");
 
-  const [salesRows, dataRows, qrRows, mpRows, ledger] = await Promise.all([
+  const [salesRows, dataRows, qrRows, mpRows, ledger, holidaysArr] = await Promise.all([
     prisma.sale.findMany(),
     prisma.dataphoneEntry.findMany(),
     prisma.qrEntry.findMany(),
     prisma.mercadopagoEntry.findMany(),
     computeLedger(),
+    loadHolidays(),
   ]);
+  const holidays = new Set(holidaysArr);
 
   const monthsSet = new Set<string>(salesRows.map((s) => s.date.slice(0, 7)));
   const months = [...monthsSet].sort().reverse();
@@ -209,13 +215,24 @@ export async function GET(request: NextRequest) {
       const tarPlink = plink.get(k) ?? 0;
       const qrVentaDia = qrV.get(k) ?? 0;
       const qrBancoDiaVal = qrBancoDia.get(k) ?? 0;
+      // "EN PLAZO": la plata de este día aún no tenía por qué haber llegado
+      // (efectivo se consigna el día hábil siguiente; Plink/QR según hasta
+      // dónde llegan los archivos cargados) → no es faltante, es pendiente.
+      const efeEnPlazo =
+        efe.estado === "PENDIENTE" &&
+        ledger.cut.bank != null &&
+        nextBusinessDay(date, holidays) > ledger.cut.bank;
+      if (efeEnPlazo) efe = { ...efe, enPlazo: true };
+      const tarPendiente = tarVenta > 0 && ledger.cut.datafono != null && date > ledger.cut.datafono;
+      const qrPendiente = qrVentaDia > 0 && ledger.cut.qr != null && date > ledger.cut.qr;
       return {
         date,
         efe,
-        tar: { venta: tarVenta, plink: tarPlink, dif: tarVenta - tarPlink },
+        tar: { venta: tarVenta, plink: tarPlink, dif: tarVenta - tarPlink, pendiente: tarPendiente },
         qrVenta: qrVentaDia,
         qrBanco: qrBancoDiaVal,
         qrDif: qrVentaDia - qrBancoDiaVal, // + = falta en banco, − = sobra
+        qrPendiente,
         mercadopago: mpV.get(k) ?? 0,
         rappi: rappiV.get(k) ?? 0,
         addi: addiV.get(k) ?? 0,
@@ -229,13 +246,17 @@ export async function GET(request: NextRequest) {
       totales: {
         efeVenta: sum((d) => d.efe.venta),
         efeDepositado: sum((d) => d.efe.deposito ?? 0),
-        efeDif: sum((d) => (d.efe.estado === "AGRUPADO" ? 0 : d.efe.dif)),
-        efePendiente: sum((d) => (d.efe.estado === "PENDIENTE" ? d.efe.venta : 0)),
+        // dif real: excluye lo pendiente EN PLAZO (aún no tenía que llegar)
+        efeDif: sum((d) => (d.efe.estado === "AGRUPADO" || (d.efe.estado === "PENDIENTE" && d.efe.enPlazo) ? 0 : d.efe.dif)),
+        efePendiente: sum((d) => (d.efe.estado === "PENDIENTE" && d.efe.enPlazo ? d.efe.venta : 0)),
+        efeVencido: sum((d) => (d.efe.estado === "PENDIENTE" && !d.efe.enPlazo ? d.efe.venta : 0)),
         tarVenta: sum((d) => d.tar.venta),
         tarPlink: sum((d) => d.tar.plink),
-        tarDif: sum((d) => d.tar.dif),
+        tarDif: sum((d) => (d.tar.pendiente ? 0 : d.tar.dif)),
+        tarPendiente: sum((d) => (d.tar.pendiente ? d.tar.venta : 0)),
         qrVenta: sum((d) => d.qrVenta),
         qrBanco: qrBancoTienda.get(st.code) ?? 0, // banco QR asignado por valor
+        qrPendiente: sum((d) => (d.qrPendiente ? d.qrVenta : 0)),
         mercadopago: sum((d) => d.mercadopago),
         rappi: sum((d) => d.rappi),
         addi: sum((d) => d.addi),

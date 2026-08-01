@@ -13,16 +13,18 @@ import {
 interface DiaEfe {
   venta: number; deposito: number | null; depositoFecha: string | null;
   grupo: string[]; dif: number; estado: string; late?: boolean; qrAlert?: boolean; nota?: string;
+  enPlazo?: boolean; // pendiente pero aún en plazo (se consigna al día hábil siguiente)
 }
 interface Dia {
-  date: string; efe: DiaEfe; tar: { venta: number; plink: number; dif: number };
-  qrVenta: number; qrBanco: number; qrDif: number;
+  date: string; efe: DiaEfe; tar: { venta: number; plink: number; dif: number; pendiente: boolean };
+  qrVenta: number; qrBanco: number; qrDif: number; qrPendiente: boolean;
   mercadopago: number; rappi: number; addi: number; otros: number;
 }
 interface Totales {
-  efeVenta: number; efeDepositado: number; efeDif: number; efePendiente: number;
-  tarVenta: number; tarPlink: number; tarDif: number;
-  qrVenta: number; qrBanco: number; mercadopago: number; rappi: number; addi: number; otros: number;
+  efeVenta: number; efeDepositado: number; efeDif: number; efePendiente: number; efeVencido: number;
+  tarVenta: number; tarPlink: number; tarDif: number; tarPendiente: number;
+  qrVenta: number; qrBanco: number; qrPendiente: number;
+  mercadopago: number; rappi: number; addi: number; otros: number;
 }
 interface ApiData {
   months: string[]; month: string; stores: { code: string; name: string }[];
@@ -159,18 +161,21 @@ export default function TiendasPage() {
           {ver("efectivo") && (
             <CardCanal icon={<Banknote size={18} />} titulo="Efectivo"
               venta={tot.efeVenta} recaudo={tot.efeDepositado} faltante={-tot.efeDif}
-              extra={tot.efePendiente > 0 ? `Pendiente por consignar: ${cop(tot.efePendiente)}` : undefined} />
+              extra={tot.efePendiente > 0 ? `⏳ En plazo (se consigna el día hábil sig.): ${cop(tot.efePendiente)}` : undefined} />
           )}
           {ver("datafono") && (
-            <CardCanal icon={<CreditCard size={18} />} titulo="Datafono" venta={tot.tarVenta} recaudo={tot.tarPlink} faltante={tot.tarDif} />
+            <CardCanal icon={<CreditCard size={18} />} titulo="Datafono" venta={tot.tarVenta} recaudo={tot.tarPlink} faltante={tot.tarDif}
+              extra={tot.tarPendiente > 0 ? `⏳ Pendiente (Plink llega al ${api.cut.datafono?.slice(8)}/${api.cut.datafono?.slice(5, 7)}): ${cop(tot.tarPendiente)}` : undefined} />
           )}
           {ver("qr") && (
             <CardCanal icon={<QrCode size={18} />} titulo="QR" venta={tot.qrVenta}
               recaudo={tot.qrBanco > 0 ? tot.qrBanco : null}
-              faltante={tot.qrBanco > 0 ? tot.qrVenta - tot.qrBanco : null}
-              extra={tot.qrBanco > 0
-                ? "Recaudo asignado por valor idéntico (aprox.) · empresa abajo ↓"
-                : "El banco no separa QR por tienda — cuadre de empresa abajo ↓"} />
+              faltante={tot.qrBanco > 0 ? tot.qrVenta - tot.qrPendiente - tot.qrBanco : null}
+              extra={tot.qrPendiente > 0
+                ? `⏳ Pendiente (extracto QR llega al ${api.cut.qr?.slice(8)}/${api.cut.qr?.slice(5, 7)}): ${cop(tot.qrPendiente)}`
+                : tot.qrBanco > 0
+                  ? "Recaudo asignado por valor idéntico (aprox.) · empresa abajo ↓"
+                  : "El banco no separa QR por tienda — cuadre de empresa abajo ↓"} />
           )}
           {ver("mercadopago") && (
             <CardCanal icon={<Wallet size={18} />} titulo="Mercadopago" venta={tot.mercadopago} recaudo={null} faltante={null}
@@ -194,14 +199,17 @@ export default function TiendasPage() {
               {ver("datafono") && <span className="flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-sm bg-sky-500" /> Datafono</span>}
               <span className="flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-sm bg-red-500" /> Falta</span>
               <span className="flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400" /> Sobra</span>
+              <span className="flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-sm bg-gray-300" /> En plazo</span>
             </div>
           </div>
           <div className="mt-4 flex items-end gap-[3px] h-36">
             {dias.map((d) => {
-              // faltante efectivo = venta − depósito (positivo = falta)
-              const faltEfe = d.efe.estado !== "AGRUPADO" && d.efe.estado !== "SIN_VENTA" ? -d.efe.dif : 0;
-              const colEfe = estadoDe(faltEfe) === "falta" ? "bg-red-400" : estadoDe(faltEfe) === "sobra" ? "bg-amber-400" : "bg-plazet-500";
-              const colTar = estadoDe(d.tar.dif) === "falta" ? "bg-red-300" : estadoDe(d.tar.dif) === "sobra" ? "bg-amber-300" : "bg-sky-400";
+              // faltante efectivo = venta − depósito (positivo = falta);
+              // lo pendiente EN PLAZO se pinta gris (no es faltante todavía)
+              const efePend = d.efe.estado === "PENDIENTE" && d.efe.enPlazo;
+              const faltEfe = !efePend && d.efe.estado !== "AGRUPADO" && d.efe.estado !== "SIN_VENTA" ? -d.efe.dif : 0;
+              const colEfe = efePend ? "bg-gray-300" : estadoDe(faltEfe) === "falta" ? "bg-red-400" : estadoDe(faltEfe) === "sobra" ? "bg-amber-400" : "bg-plazet-500";
+              const colTar = d.tar.pendiente ? "bg-gray-200" : estadoDe(d.tar.dif) === "falta" ? "bg-red-300" : estadoDe(d.tar.dif) === "sobra" ? "bg-amber-300" : "bg-sky-400";
               return (
                 <div key={d.date} className="group relative h-full flex-1 flex items-end gap-[2px]" title={d.date}>
                   {ver("efectivo") && (
@@ -394,12 +402,14 @@ function FilaDia({ d, ver, canal }: { d: Dia; ver: (c: Canal) => boolean; canal:
   const mostrarDifEfe = e.estado !== "AGRUPADO" && e.estado !== "SIN_VENTA";
 
   // señales de alerta SOLO de los canales visibles (para que el triángulo no se
-  // prenda por un canal que no estás mirando)
+  // prenda por un canal que no estás mirando). Lo pendiente EN PLAZO no alerta.
+  const efeEnPlazo = e.estado === "PENDIENTE" && e.enPlazo;
   const tonos: Estado[] = [];
-  if (ver("efectivo") && mostrarDifEfe && (e.venta || e.deposito) && e.estado !== "PENDIENTE")
+  if (ver("efectivo") && mostrarDifEfe && (e.venta || e.deposito) && !efeEnPlazo)
     tonos.push(e.estado === "CUADRA" || e.estado === "MANUAL" ? "cuadra" : estadoDe(-e.dif));
-  if (ver("datafono") && (d.tar.venta || d.tar.plink)) tonos.push(estadoDe(d.tar.dif));
-  if (canal === "qr" && (d.qrVenta || d.qrBanco)) tonos.push(estadoDe(d.qrDif));
+  if (ver("datafono") && (d.tar.venta || d.tar.plink) && !d.tar.pendiente) tonos.push(estadoDe(d.tar.dif));
+  if (canal === "qr" && (d.qrVenta || d.qrBanco) && !d.qrPendiente) tonos.push(estadoDe(d.qrDif));
+  const hayPendiente = (ver("efectivo") && efeEnPlazo) || (ver("datafono") && d.tar.pendiente) || (canal === "qr" && d.qrPendiente);
   const señales = {
     hayFalta: tonos.includes("falta"),
     haySobra: tonos.includes("sobra"),
@@ -417,23 +427,28 @@ function FilaDia({ d, ver, canal }: { d: Dia; ver: (c: Canal) => boolean; canal:
               {cop(e.deposito)}{e.grupo.length > 1 && <span className="ml-1 text-[10px] text-gray-400">({e.grupo.length}d)</span>}
             </span>
           ) : e.estado === "AGRUPADO" ? <span className="text-[11px] text-gray-400">agrupado ↓</span>
-            : e.estado === "PENDIENTE" ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">pendiente</span>
+            : e.estado === "PENDIENTE" && e.enPlazo ? <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-500">⏳ en plazo</span>
+            : e.estado === "PENDIENTE" ? <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-700">sin consignar</span>
             : "—"}
         </td>
       )}
       {ver("efectivo") && (
-        <td className={`px-3 py-2 text-right ${mostrarDifEfe ? difColor(-e.dif) : "text-gray-300"}`}>
-          {mostrarDifEfe && e.venta + (e.deposito ?? 0) !== 0 ? difTexto(-e.dif) : "—"}
+        <td className={`px-3 py-2 text-right ${efeEnPlazo ? "text-gray-400" : mostrarDifEfe ? difColor(-e.dif) : "text-gray-300"}`}>
+          {efeEnPlazo ? "en plazo" : mostrarDifEfe && e.venta + (e.deposito ?? 0) !== 0 ? difTexto(-e.dif) : "—"}
         </td>
       )}
       {ver("datafono") && <td className="px-3 py-2 text-right">{d.tar.venta ? cop(d.tar.venta) : "—"}</td>}
-      {ver("datafono") && <td className="px-3 py-2 text-right text-gray-600">{d.tar.plink ? cop(d.tar.plink) : "—"}</td>}
-      {ver("datafono") && <td className={`px-3 py-2 text-right ${difColor(d.tar.dif)}`}>{d.tar.venta || d.tar.plink ? difTexto(d.tar.dif) : "—"}</td>}
+      {ver("datafono") && <td className="px-3 py-2 text-right text-gray-600">{d.tar.pendiente ? <span className="text-[11px] text-gray-400">⏳</span> : d.tar.plink ? cop(d.tar.plink) : "—"}</td>}
+      {ver("datafono") && (
+        <td className={`px-3 py-2 text-right ${d.tar.pendiente ? "text-gray-400" : difColor(d.tar.dif)}`}>
+          {d.tar.pendiente ? "en plazo" : d.tar.venta || d.tar.plink ? difTexto(d.tar.dif) : "—"}
+        </td>
+      )}
       {ver("qr") && <td className="px-3 py-2 text-right">{d.qrVenta ? cop(d.qrVenta) : "—"}</td>}
-      {canal === "qr" && <td className="px-3 py-2 text-right text-gray-600">{d.qrBanco ? cop(d.qrBanco) : "—"}</td>}
+      {canal === "qr" && <td className="px-3 py-2 text-right text-gray-600">{d.qrPendiente ? <span className="text-[11px] text-gray-400">⏳</span> : d.qrBanco ? cop(d.qrBanco) : "—"}</td>}
       {canal === "qr" && (
-        <td className={`px-3 py-2 text-right ${d.qrVenta || d.qrBanco ? difColor(d.qrDif) : "text-gray-300"}`}>
-          {d.qrVenta || d.qrBanco ? difTexto(d.qrDif) : "—"}
+        <td className={`px-3 py-2 text-right ${d.qrPendiente ? "text-gray-400" : d.qrVenta || d.qrBanco ? difColor(d.qrDif) : "text-gray-300"}`}>
+          {d.qrPendiente ? "en plazo" : d.qrVenta || d.qrBanco ? difTexto(d.qrDif) : "—"}
         </td>
       )}
       {ver("mercadopago") && <td className="px-3 py-2 text-right">{d.mercadopago ? cop(d.mercadopago) : "—"}</td>}
@@ -449,7 +464,8 @@ function FilaDia({ d, ver, canal }: { d: Dia; ver: (c: Canal) => boolean; canal:
           {(ver("efectivo")) && e.late && <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700"><Clock4 size={11} /> tardía</span>}
           {señales.hayFalta && <span className="flex items-center gap-1 text-red-600"><AlertTriangle size={15} /><span className="text-[10px] font-semibold">falta</span></span>}
           {!señales.hayFalta && señales.haySobra && <span className="flex items-center gap-1 text-amber-600"><AlertTriangle size={15} /><span className="text-[10px] font-semibold">sobra</span></span>}
-          {!señales.hayFalta && !señales.haySobra && señales.hayDato && <CheckCircle2 size={15} className="text-plazet-500" />}
+          {!señales.hayFalta && !señales.haySobra && hayPendiente && <span className="flex items-center gap-1 text-gray-400"><Clock4 size={14} /><span className="text-[10px] font-medium">en plazo</span></span>}
+          {!señales.hayFalta && !señales.haySobra && !hayPendiente && señales.hayDato && <CheckCircle2 size={15} className="text-plazet-500" />}
         </div>
       </td>
     </tr>

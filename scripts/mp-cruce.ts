@@ -2,9 +2,9 @@
 // Mercadopago. Se empareja por MONTO (valor de la compra) con tolerancia de
 // fecha, porque la fecha de la venta en el POS y la del pago en MP no siempre
 // coinciden (pedidos web aprobados al día siguiente, etc.).
-import fs from "node:fs";
-import path from "node:path";
-import * as XLSX from "xlsx";
+
+
+
 import { prisma } from "../src/lib/db";
 
 const MC = "C:/Users/Paola Agreda/OneDrive/Escritorio/PROYECTOS PAO/muestras-conciliacion";
@@ -24,37 +24,17 @@ interface OpMP {
   liberacion: string;
 }
 
-function leerSettlements(): OpMP[] {
-  const ops: OpMP[] = [];
-  for (const f of fs.readdirSync(MC)) {
-    if (!/^settlement.*\.xlsx$/i.test(f)) continue;
-    const wb = XLSX.readFile(path.join(MC, f));
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
-      header: 1, raw: true, defval: null,
-    }) as unknown[][];
-    const H = rows[0].map(String);
-    const c = (n: string) => H.findIndex((h) => h.toUpperCase().includes(n));
-    const cId = c("ID DE OPERACI"), cMedio = c("TIPO DE MEDIO"), cTipo = c("TIPO DE OPERACI"),
-      cBruto = c("VALOR DE LA COMPRA"), cOrigen = c("FECHA DE ORIGEN"),
-      cNeto = c("MONTO NETO"), cLib = c("FECHA DE LIBERACI");
-    for (const r of rows.slice(1)) {
-      if (!r || r[cOrigen] == null) continue;
-      if (!String(r[cTipo] ?? "").toUpperCase().includes("APROBADO")) continue;
-      ops.push({
-        id: String(r[cId]),
-        fecha: String(r[cOrigen]).slice(0, 10),
-        medio: String(r[cMedio]),
-        bruto: Number(r[cBruto]) || 0,
-        neto: Number(r[cNeto]) || 0,
-        liberacion: String(r[cLib] ?? "").slice(0, 10),
-      });
-    }
-  }
-  return ops.sort((a, b) => a.fecha.localeCompare(b.fecha));
+/** Las operaciones de MP ya viven en la BD (las carga cargar-carpeta desde
+ * cualquier formato de settlement, XLSX o CSV). */
+async function leerSettlements(): Promise<OpMP[]> {
+  const rows = await prisma.mercadopagoEntry.findMany();
+  return rows
+    .map((r) => ({ id: r.opId, fecha: r.date, medio: r.medio, bruto: r.bruto, neto: r.neto, liberacion: r.release ?? "" }))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
 async function main() {
-  const ops = leerSettlements();
+  const ops = await leerSettlements();
   if (ops.length === 0) return console.log("No hay archivos settlement de Mercado Pago.");
   const desde = ops[0].fecha, hasta = ops[ops.length - 1].fecha;
 

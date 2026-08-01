@@ -141,6 +141,99 @@ $63.600 NUBIA 4-jul. QR empresa julio: banco recibió $406.150 MÁS que las vent
 - PREGUNTA ABIERTA a Paola: ¿generar Excel bonito con estas dos listas?
 - PEDIRLE: settlement de MP del 22-jul a hoy.
 
+## 28-jul — TABLA FINAL DEL CRUCE NL (formato aprobado por Paola paso a paso)
+Scripts: nl-abril-paso.ts (4 tiendas, D0 sin las devoluciones negativas de
+abril — pedido Paola), nl-cerradas-paso.ts (5 cerradas), nl-deuda-actualizada.ts.
+Estructura de la tabla (columnas: Facturado | →NATURAL | →HABBIE | No consignado):
+- 4 tiendas (1-abr→arranque Alegra c/u; JP solo 16→27 may): facturado
+  $159.332.943 | NL $76.883.430 | HB $82.449.513 (incluye el efectivo "sin
+  cuenta" ya verificado contra banco) | no consignado 0.
+  Por tienda (fact/NL/HB): Plaza 56.625.546/28.631.508/27.994.038 ·
+  Unioccidente 49.631.417/26.318.827/23.312.590 · UNorte 41.921.030/21.442.195/
+  20.478.835 · JP 11.154.950/490.900/10.664.050.
+- 5 cerradas (HB = cifras verificadas banco, las del cruce): fact $71.505.260 |
+  NL $55.907.780 | HB $15.154.680 | NO CONSIGNADO $442.800 (BB 28.500 + BC
+  73.150 + BF 64.450 + BM 276.700 — problema de NL, no afecta deuda).
+  Por tienda (fact/NL/HB/noconsig): ÉxitoOcc 19.409.140/15.537.875/3.842.765/
+  28.500 · Viva 12.120.795/11.037.580/1.010.065/73.150 · Sabana 10.911.200/
+  8.050.150/2.796.600/64.450 · SanPedro 10.098.035/6.853.885/3.244.150/0 ·
+  UCali 18.966.090/14.428.290/4.261.100/276.700.
+- Fila Rappi may-jun (recaudó NL): $1.687.150 → NATURAL.
+- Fila transferencias NL→Habbie: $32.976.384 → HABBIE (16-abr 22M + 24-abr
+  10.976.384).
+- TOTAL: NATURAL $134.478.360 | HABBIE $130.580.577 | no consignado $442.800.
+- Cierre: de NL es tuyo $29.127.071 (tarjetas 27.439.921 + Rappi 1.687.150);
+  tuyo es de NL $63.010.636 (efectivo precorte 14.879.572 + cerradas 15.154.680
+  + transferencias 32.976.384) → HABBIE DEBE $33.883.565.
+- Verificado: en julio NO hay Rappi/Addi nuevos (nada de Paola pasa ya por NL).
+PENDIENTE de Paola: (1) confirmar fac 6216 22-jun $118.250 marcada Rappi pero
+= cobro Mercado Pago 21-jun (op 164414384091) → deuda pasaría a $34.001.815;
+(2) decir si ha abonado algo a NL desde ~16-jul; (3) visto bueno para regenerar
+el "Cruce Habbie - Natural Light.xlsx" formal con estas hojas nuevas.
+
+## 31-jul — ✅ SSO EN PRODUCCIÓN FUNCIONANDO DE PUNTA A PUNTA
+Probado con sesión fabricada (next-auth/jwt encode + secreto compartido):
+nómina firma pase → conciliador canjea → /tiendas 200. LISTO.
+La causa raíz de los 2 días de lucha: el formulario "sensitive" de Vercel
+corrompía el valor tipeado. Solución: borrar la variable y recrearla con
+Sensitive APAGADO para verificar el valor a ojo antes de guardar. Así se hizo
+en conciliador (SSO_SECRET, por mí) y en nómina (NEXTAUTH_SECRET, por Paola).
+El secreto compartido (43 chars) está en scratchpad/sec.txt y en ambos .env.
+Falta confirmación visual de Paola del flujo completo en su navegador.
+Pendientes menores: rotar los secretos a "Sensitive" de nuevo si se quiere
+(opcional), login con Google (crear OAuth en Google Cloud), usuario de Jero
+solo-Conciliaciones, y que Paola cambie su clave (temporal: Plazet-5fnwr2).
+
+## 29-jul — PUBLICADO EN VERCEL; falta UN paso (SSO_SECRET bien grabado)
+ESTADO: portal en producción https://plazet.vercel.app (marca "Plazet", login
+aterriza en /portal, enlace Portal en sidebar) ✔ · conciliador en producción
+https://conciliador-plazet.vercel.app (protegido, apunta al portal) ✔ ·
+NEXTAUTH_URL=plazet.vercel.app ✔ · CONCILIADOR_URL en nómina ✔ ·
+deploys desbloqueados (git author era gmail; ahora paola@plazet.co) ✔.
+PROBLEMA PENDIENTE: el botón Conciliaciones da "pase venció o no es válido".
+Causa: el SSO_SECRET grabado en Vercel (conciliador) NO coincide con el
+NEXTAUTH_SECRET. Ya generé secreto nuevo (43 chars, en scratchpad sec.txt y en
+ambos .env locales, verificados iguales) y lo escribí en Vercel en ambos
+proyectos + redeploys — pero el canje SIGUE fallando: el valor tipeado en el
+conciliador quedó mal (campo sensitive, no verificable a ojo). Al intentar
+reescribirlo la ventana de Chrome quedó minimizada (viewport 0x0).
+SIGUIENTE PASO EXACTO: con Chrome visible → conciliador-plazet → Env Vars →
+SSO_SECRET → Edit (o Delete y recrear SIN "Sensitive" para verlo) → pegar el
+valor de sec.txt → Save → Redeploy → probar canje con scripts (firmar JWT con
+SSO_SECRET local aud=conciliador-plazet → /api/sso?token=... debe redirigir a
+"/" y no a /acceso?error=pase). La clave temporal de Paola: Plazet-5fnwr2.
+OJO: al cambiar NEXTAUTH_SECRET su sesión de producción se invalida (re-login).
+
+## 27-jul noche — PORTAL LISTO EN LOCAL, PENDIENTE QUE PAOLA LO PRUEBE
+TODO construido y probado por mí (falta el visto bueno de Paola):
+- Conciliador migrado a POSTGRES EN NEON (base "conciliador", misma instancia
+  de la nómina; datos migrados completos desde dev.db: 11.859 ventas, etc.).
+  dev.db queda como respaldo local. Pool pg max 20 (el tablero dispara ~12
+  consultas paralelas y con el default daba error de conexiones).
+- LOGIN ÚNICO: nómina /portal con dos tarjetas (Nómina/Conciliaciones) según
+  permisos; login aterriza en /portal; /api/sso-conciliador firma pase JWT
+  5 min (NEXTAUTH_SECRET) → conciliador /api/sso lo canjea por cookie 30 días;
+  proxy.ts exige sesión (páginas→/acceso, APIs→401). Usuario sin accesoNomina
+  (Jero) rebota al portal. Casillas Nómina/Conciliaciones en Usuarios + columna
+  Apps. ADMIN (paola@plazet.co) ya tiene Conciliaciones habilitado en la BD.
+- Flujo SSO probado con pase firmado a mano: canje→cookie→tiendas 200 ✓.
+- COMMITS LOCALES SIN PUSH: conciliador f49f87c (remoto ya existe:
+  github.com/paola-Plazet/conciliador-plazet, commit inicial ab5dd94 pusheado);
+  nómina 44b198c (¡AHEAD 1 — NO pushear hasta que Paola pruebe, el push
+  DESPLIEGA a producción!).
+CÓMO PROBAR EN LOCAL (2 servidores):
+  nómina:      cd nomina-colombia && npm run dev          (puerto 3000)
+  conciliador: cd conciliador-plazet && npx next dev -p 3001
+  → entrar a localhost:3000, login Google, portal, botón Conciliaciones.
+PARA PUBLICAR (cuando Paola apruebe):
+  1. push nómina (auto-deploy Vercel) + push conciliador.
+  2. Paola importa conciliador-plazet en Vercel. Envs del conciliador:
+     DATABASE_URL (la de .env del conciliador), SSO_SECRET (= NEXTAUTH_SECRET
+     de la nómina), NEXT_PUBLIC_NOMINA_URL (URL de la nómina en Vercel).
+  3. En el proyecto nómina de Vercel agregar CONCILIADOR_URL (URL del
+     conciliador en Vercel) y redeploy.
+  4. Probar el flujo en producción y habilitarle a Jero su usuario.
+
 ## 27-jul — VERCEL: portal Nómina + Conciliaciones (EN CURSO)
 Decisión: DOS proyectos Vercel separados + botones de portal (la nómina es
 Next 14 y el conciliador Next 16 — no se fusionan). Pasos:

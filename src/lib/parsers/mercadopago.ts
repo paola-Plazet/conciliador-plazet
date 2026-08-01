@@ -20,7 +20,63 @@ export interface MercadopagoParseResult {
   warnings: string[];
 }
 
+/** Formato NUEVO (jul-2026): CSV separado por ';' con encabezados en inglés
+ * (TRANSACTION_DATE;SETTLEMENT_DATE;...;SOURCE_ID;PAYMENT_METHOD_TYPE;
+ * TRANSACTION_TYPE;TRANSACTION_AMOUNT;FEE_AMOUNT;REAL_AMOUNT;TAXES_AMOUNT;...).
+ * REAL_AMOUNT ya viene neto de comisión e impuestos. */
+const MEDIO_CSV: Record<string, string> = {
+  credit_card: "Tarjeta de crédito",
+  debit_card: "Tarjeta de débito",
+  bank_transfer: "Transferencia bancaria",
+  ticket: "Cupón de pago",
+  account_money: "Dinero en cuenta",
+};
+
+function parseMercadopagoCsv(text: string): MercadopagoParseResult {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  const H = lines[0].split(";").map((h) => h.trim().toUpperCase());
+  const col = (n: string) => H.indexOf(n);
+  const cFecha = col("TRANSACTION_DATE");
+  const cId = col("SOURCE_ID");
+  const cTipoMedio = col("PAYMENT_METHOD_TYPE");
+  const cTipoOp = col("TRANSACTION_TYPE");
+  const cBruto = col("TRANSACTION_AMOUNT");
+  const cNeto = col("REAL_AMOUNT");
+  const cRelease = col("MONEY_RELEASE_DATE");
+
+  const entries: MercadopagoEntry[] = [];
+  const warnings: string[] = [];
+  let omitidas = 0;
+  for (const line of lines.slice(1)) {
+    const p = line.split(";");
+    if (!p[cFecha]) continue;
+    // solo liquidaciones (SETTLEMENT); devoluciones/contracargos se omiten
+    if (String(p[cTipoOp] ?? "").toUpperCase() !== "SETTLEMENT") {
+      omitidas++;
+      continue;
+    }
+    const tipoMedio = String(p[cTipoMedio] ?? "").trim();
+    entries.push({
+      date: String(p[cFecha]).slice(0, 10),
+      opId: String(p[cId] ?? "").trim(),
+      medio: MEDIO_CSV[tipoMedio] ?? tipoMedio,
+      bruto: parseNumber(p[cBruto]),
+      neto: parseNumber(p[cNeto]),
+      release: p[cRelease] ? String(p[cRelease]).slice(0, 10) : null,
+    });
+  }
+  if (omitidas > 0)
+    warnings.push(`Mercado Pago: ${omitidas} operación(es) que no son liquidación omitida(s).`);
+  return { entries, warnings };
+}
+
 export function parseMercadopago(buffer: Buffer): MercadopagoParseResult {
+  // ¿es el CSV nuevo?
+  const head = buffer.subarray(0, 200).toString("utf8").toUpperCase();
+  if (head.includes("TRANSACTION_DATE;")) {
+    return parseMercadopagoCsv(buffer.toString("utf8"));
+  }
+
   const wb = readWorkbook(buffer);
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
     header: 1,

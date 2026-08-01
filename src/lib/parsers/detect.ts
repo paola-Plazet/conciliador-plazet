@@ -29,6 +29,9 @@ export function detectFileType(filename: string, buffer: Buffer): DetectionResul
   if (/ABONO\s+NETO|PAGO\s+QR/.test(head) && /^\s*\d{3}-\d{6}-\d{2}/m.test(buffer.subarray(0, 4096).toString("latin1"))) {
     return { kind: "datafono_banco", reason: "Extracto banco datafono (CSV 191)" };
   }
+  if (head.includes("TRANSACTION_DATE;") && head.includes("SETTLEMENT_DATE")) {
+    return { kind: "mercadopago", reason: "Liquidaciones Mercado Pago (settlement CSV)" };
+  }
 
   // 2) Intento como libro (xls / xlsx)
   try {
