@@ -24,10 +24,20 @@ const NAV = [
 export function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="w-60 shrink-0 bg-plazet-950 text-plazet-100 flex flex-col">
+    <aside className="w-60 shrink-0 sticky top-0 h-screen overflow-y-auto bg-plazet-950 text-plazet-100 flex flex-col">
       <div className="px-5 py-6 border-b border-plazet-800">
         <div className="text-xl font-bold text-white">Conciliador</div>
         <div className="text-sm text-plazet-300">Plazet · Habbie SAS</div>
+      </div>
+      {/* Volver al Portal Plazet (cambiar de app) — arriba, siempre a la vista */}
+      <div className="px-3 pt-3">
+        <a
+          href={`${process.env.NEXT_PUBLIC_NOMINA_URL ?? ""}/portal`}
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-white bg-plazet-800 hover:bg-plazet-700 transition-colors"
+        >
+          <LayoutGrid size={18} />
+          Portal Plazet
+        </a>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1">
         {NAV.map(({ href, label, icon: Icon }) => {
@@ -49,16 +59,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-      {/* Volver al Portal Plazet (cambiar de app) */}
-      <div className="px-3 pb-2">
-        <a
-          href={`${process.env.NEXT_PUBLIC_NOMINA_URL ?? ""}/portal`}
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-white bg-plazet-800 hover:bg-plazet-700 transition-colors"
-        >
-          <LayoutGrid size={18} />
-          Portal Plazet
-        </a>
-      </div>
       <div className="px-5 py-4 text-xs text-plazet-400 border-t border-plazet-800">
         Conciliación de efectivo y datáfono
       </div>
