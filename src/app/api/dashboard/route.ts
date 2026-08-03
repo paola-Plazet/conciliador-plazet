@@ -168,11 +168,15 @@ export async function GET(request: NextRequest) {
     qrAsignado += amount;
   }
 
-  // resultados EFECTIVO del mes → mapear al último día de venta que cubren
+  // resultados EFECTIVO del mes → mapear al último día de venta que cubren.
+  // Se incluye cualquier resultado cuyo depósito CUBRA días del mes visible,
+  // aunque el depósito cierre en otro mes (efectivo de fin de mes que se
+  // consigna a comienzos del siguiente: así el 31 no sale como "falta").
   const efeRes = new Map<string, DiaEfe>(); // `${store}|${fecha}`
   for (const r of ledger.summary.results) {
     if (r.channel !== "EFECTIVO" || !r.storeCode) continue;
-    if ((r.month ?? r.depositDate.slice(0, 7)) !== m) continue;
+    const tocaMes = (r.month ?? r.depositDate.slice(0, 7)) === m || r.salesDates.some((d) => d.startsWith(m));
+    if (!tocaMes) continue;
     const dias = [...r.salesDates].sort();
     const cierre = dias[dias.length - 1] ?? r.depositDate;
     for (const d of dias) {
@@ -215,24 +219,26 @@ export async function GET(request: NextRequest) {
       const tarPlink = plink.get(k) ?? 0;
       const qrVentaDia = qrV.get(k) ?? 0;
       const qrBancoDiaVal = qrBancoDia.get(k) ?? 0;
-      // "EN PLAZO": la plata de este día aún no tenía por qué haber llegado
-      // (efectivo se consigna el día hábil siguiente; Plink/QR según hasta
-      // dónde llegan los archivos cargados) → no es faltante, es pendiente.
+      // "EN PLAZO" (solo efectivo): la consignación se hace el día hábil
+      // siguiente, así que ese día no tenía por qué haber llegado todavía →
+      // no es faltante, es normal. Distinto de datáfono/QR: esos entran el
+      // MISMO día; si no aparecen es porque falta cargar el extracto, no
+      // porque estén "en plazo" (se etiqueta "sin cargar").
       const efeEnPlazo =
         efe.estado === "PENDIENTE" &&
         ledger.cut.bank != null &&
         nextBusinessDay(date, holidays) > ledger.cut.bank;
       if (efeEnPlazo) efe = { ...efe, enPlazo: true };
-      const tarPendiente = tarVenta > 0 && ledger.cut.datafono != null && date > ledger.cut.datafono;
-      const qrPendiente = qrVentaDia > 0 && ledger.cut.qr != null && date > ledger.cut.qr;
+      const tarSinCargar = tarVenta > 0 && ledger.cut.datafono != null && date > ledger.cut.datafono;
+      const qrSinCargar = qrVentaDia > 0 && ledger.cut.qr != null && date > ledger.cut.qr;
       return {
         date,
         efe,
-        tar: { venta: tarVenta, plink: tarPlink, dif: tarVenta - tarPlink, pendiente: tarPendiente },
+        tar: { venta: tarVenta, plink: tarPlink, dif: tarVenta - tarPlink, sinCargar: tarSinCargar },
         qrVenta: qrVentaDia,
         qrBanco: qrBancoDiaVal,
         qrDif: qrVentaDia - qrBancoDiaVal, // + = falta en banco, − = sobra
-        qrPendiente,
+        qrSinCargar,
         mercadopago: mpV.get(k) ?? 0,
         rappi: rappiV.get(k) ?? 0,
         addi: addiV.get(k) ?? 0,
@@ -241,6 +247,19 @@ export async function GET(request: NextRequest) {
     });
 
     const sum = (f: (d: (typeof days)[number]) => number) => days.reduce((a, d) => a + f(d), 0);
+    // Totalizado del mes: además del NETO (que puede compensarse entre días),
+    // se separa cuánto faltó y cuánto sobró en total, para ver de un vistazo
+    // si al cierre ya está al día o si hay días con problemas reales debajo
+    // de un neto que parece cuadrado. Convención unificada: faltante > 0 =
+    // falta, faltante < 0 = sobra (efe: dif viene invertido -dif; tar/qr: dif
+    // ya viene en ese sentido).
+    const faltanteEfeDia = (d: (typeof days)[number]) =>
+      d.efe.estado === "AGRUPADO" || (d.efe.estado === "PENDIENTE" && d.efe.enPlazo) ? 0 : -d.efe.dif;
+    const faltanteTarDia = (d: (typeof days)[number]) => (d.tar.sinCargar ? 0 : d.tar.dif);
+    const faltanteQrDia = (d: (typeof days)[number]) => (d.qrSinCargar ? 0 : d.qrDif);
+    const totalFalta = (f: (d: (typeof days)[number]) => number) => days.reduce((a, d) => a + Math.max(0, f(d)), 0);
+    const totalSobra = (f: (d: (typeof days)[number]) => number) => days.reduce((a, d) => a + Math.max(0, -f(d)), 0);
+
     data[st.code] = {
       days,
       totales: {
@@ -250,13 +269,19 @@ export async function GET(request: NextRequest) {
         efeDif: sum((d) => (d.efe.estado === "AGRUPADO" || (d.efe.estado === "PENDIENTE" && d.efe.enPlazo) ? 0 : d.efe.dif)),
         efePendiente: sum((d) => (d.efe.estado === "PENDIENTE" && d.efe.enPlazo ? d.efe.venta : 0)),
         efeVencido: sum((d) => (d.efe.estado === "PENDIENTE" && !d.efe.enPlazo ? d.efe.venta : 0)),
+        efeFaltaTotal: totalFalta(faltanteEfeDia),
+        efeSobraTotal: totalSobra(faltanteEfeDia),
         tarVenta: sum((d) => d.tar.venta),
         tarPlink: sum((d) => d.tar.plink),
-        tarDif: sum((d) => (d.tar.pendiente ? 0 : d.tar.dif)),
-        tarPendiente: sum((d) => (d.tar.pendiente ? d.tar.venta : 0)),
+        tarDif: sum((d) => (d.tar.sinCargar ? 0 : d.tar.dif)),
+        tarSinCargar: sum((d) => (d.tar.sinCargar ? d.tar.venta : 0)),
+        tarFaltaTotal: totalFalta(faltanteTarDia),
+        tarSobraTotal: totalSobra(faltanteTarDia),
         qrVenta: sum((d) => d.qrVenta),
         qrBanco: qrBancoTienda.get(st.code) ?? 0, // banco QR asignado por valor
-        qrPendiente: sum((d) => (d.qrPendiente ? d.qrVenta : 0)),
+        qrSinCargar: sum((d) => (d.qrSinCargar ? d.qrVenta : 0)),
+        qrFaltaTotal: totalFalta(faltanteQrDia),
+        qrSobraTotal: totalSobra(faltanteQrDia),
         mercadopago: sum((d) => d.mercadopago),
         rappi: sum((d) => d.rappi),
         addi: sum((d) => d.addi),
