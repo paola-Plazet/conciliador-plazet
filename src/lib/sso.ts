@@ -13,20 +13,28 @@ function secreto(): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
+export type RolConciliador = "ADMIN" | "EDITOR" | "VIEWER";
+
 export interface SesionUsuario {
   email: string;
   name: string;
+  /** rol DENTRO de Conciliaciones (independiente del rol de Nómina) */
+  rol: RolConciliador;
+}
+
+function rolValido(v: unknown): RolConciliador {
+  return v === "ADMIN" || v === "EDITOR" ? v : "VIEWER";
 }
 
 /** Verifica el pase corto que emite la nómina (válido pocos minutos) */
 export async function verificarPase(token: string): Promise<SesionUsuario> {
   const { payload } = await jwtVerify(token, secreto(), { audience: AUDIENCE });
-  return { email: String(payload.email ?? ""), name: String(payload.name ?? "") };
+  return { email: String(payload.email ?? ""), name: String(payload.name ?? ""), rol: rolValido(payload.rol) };
 }
 
 /** Emite la cookie de sesión del conciliador (30 días) */
 export async function emitirSesion(u: SesionUsuario): Promise<string> {
-  return new SignJWT({ email: u.email, name: u.name })
+  return new SignJWT({ email: u.email, name: u.name, rol: u.rol })
     .setProtectedHeader({ alg: "HS256" })
     .setAudience(AUDIENCE)
     .setIssuedAt()
@@ -39,7 +47,7 @@ export async function validarSesion(cookie: string | undefined): Promise<SesionU
   if (!cookie) return null;
   try {
     const { payload } = await jwtVerify(cookie, secreto(), { audience: AUDIENCE });
-    return { email: String(payload.email ?? ""), name: String(payload.name ?? "") };
+    return { email: String(payload.email ?? ""), name: String(payload.name ?? ""), rol: rolValido(payload.rol) };
   } catch {
     return null;
   }

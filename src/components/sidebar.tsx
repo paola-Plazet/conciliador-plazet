@@ -7,6 +7,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Store,
@@ -18,18 +19,25 @@ import {
   LogOut,
 } from "lucide-react";
 
+// minRol: quién ve cada sección (VIEWER < EDITOR < ADMIN)
 const NAV = [
-  { href: "/", label: "Tablero", icon: LayoutDashboard },
-  { href: "/tiendas", label: "Tiendas", icon: Store },
-  { href: "/cargar", label: "Cargar archivos", icon: Upload },
-  { href: "/conciliacion", label: "Conciliación", icon: ListChecks },
-  { href: "/configuracion", label: "Configuración", icon: Settings },
-  { href: "/reportes", label: "Reportes", icon: FileSpreadsheet },
+  { href: "/", label: "Tablero", icon: LayoutDashboard, minRol: "VIEWER" },
+  { href: "/tiendas", label: "Tiendas", icon: Store, minRol: "VIEWER" },
+  { href: "/cargar", label: "Cargar archivos", icon: Upload, minRol: "EDITOR" },
+  { href: "/conciliacion", label: "Conciliación", icon: ListChecks, minRol: "VIEWER" },
+  { href: "/configuracion", label: "Configuración", icon: Settings, minRol: "ADMIN" },
+  { href: "/reportes", label: "Reportes", icon: FileSpreadsheet, minRol: "VIEWER" },
 ];
+const NIVEL: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
 
 export function Sidebar() {
   const pathname = usePathname();
   const portalUrl = `${process.env.NEXT_PUBLIC_NOMINA_URL ?? ""}/portal`;
+  const [rol, setRol] = useState<string>("ADMIN"); // optimista; el proxy manda igual
+  useEffect(() => {
+    fetch("/api/me").then((r) => (r.ok ? r.json() : null)).then((d) => d?.rol && setRol(d.rol)).catch(() => {});
+  }, []);
+  const visibles = NAV.filter((n) => NIVEL[rol] >= NIVEL[n.minRol]);
   return (
     <aside className="sticky top-0 h-screen w-[260px] shrink-0 z-30 bg-gradient-to-b from-plazet-950 to-plazet-900 text-white flex flex-col">
       {/* Logo */}
@@ -47,7 +55,15 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {/* Cambiar de app — siempre de primero */}
+        <a
+          href={portalUrl}
+          className="flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium text-plazet-200 hover:bg-plazet-800/60 hover:text-white transition-all duration-200"
+        >
+          <LayoutGrid size={20} className="shrink-0" />
+          <span>Portal</span>
+        </a>
+        {visibles.map(({ href, label, icon: Icon }) => {
           const active =
             href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
@@ -68,14 +84,6 @@ export function Sidebar() {
             </Link>
           );
         })}
-        {/* Cambiar de app */}
-        <a
-          href={portalUrl}
-          className="flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium text-plazet-200 hover:bg-plazet-800/60 hover:text-white transition-all duration-200"
-        >
-          <LayoutGrid size={20} className="shrink-0" />
-          <span>Portal</span>
-        </a>
       </nav>
 
       {/* Footer */}
