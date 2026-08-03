@@ -167,10 +167,17 @@ export async function ingestFiles(
         rows,
         dateOf: (s) => s.date,
         closed,
+        // OJO: no borrar las ventas de Linux (source "linux"). Alegra/Karrot y
+        // Linux son fuentes complementarias en el borde de la transición de
+        // sistema; el corte por tienda en el parser de Linux evita duplicados.
         deleteRange: (from, to, openMonths) =>
           prisma.sale
             .deleteMany({
-              where: { date: { gte: from, lte: to }, OR: openMonths.map((m) => ({ date: { startsWith: m } })) },
+              where: {
+                date: { gte: from, lte: to },
+                source: { not: "linux" },
+                OR: openMonths.map((m) => ({ date: { startsWith: m } })),
+              },
             })
             .then(() => {}),
         insert: (rows) =>

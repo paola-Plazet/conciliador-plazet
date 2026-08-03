@@ -8,15 +8,17 @@ import { readWorkbook, sheetRows, headerIndex, findCol, parseNumber, fromExcelSe
 import type { SaleInvoice } from "../types";
 import type { AlegraParseResult } from "./alegra";
 
-// SUC de Linux → tienda actual, con la fecha desde la que se carga cada canal.
-// EFECTIVO de B1/B2/B3 se pide de TODO abril (desde 1-abr) para ver el mes
-// completo; la TARJETA solo desde el corte con NL (16-abr), porque antes de esa
-// fecha los datáfonos eran de Natural Light. Jardín Plaza entró el 16-may.
-const SUC_TIENDA: Record<string, { store: string; desdeEfe: string; desdeTar: string }> = {
-  BD: { store: "B1", desdeEfe: "2026-04-01", desdeTar: "2026-04-16" }, // Plaza de las Américas
-  Q9: { store: "B2", desdeEfe: "2026-04-01", desdeTar: "2026-04-16" }, // Unioccidente
-  BQ: { store: "B3", desdeEfe: "2026-04-01", desdeTar: "2026-04-16" }, // Unicentro Norte
-  D0: { store: "JP", desdeEfe: "2026-05-16", desdeTar: "2026-05-16" }, // Jardín Plaza
+// SUC de Linux → tienda actual, con la fecha desde la que se carga cada canal
+// y el CORTE SUPERIOR `hasta` (último día que aporta Linux, = día antes de que
+// esa tienda arrancara en Alegra; así no se duplica con Alegra ni queda hueco).
+// EFECTIVO de B1/B2/B3 se pide de TODO abril (desde 1-abr); la TARJETA solo
+// desde el corte con NL (16-abr). Jardín Plaza entró el 16-may.
+// Arranque de Alegra: B3 30-abr, B2 1-may, B1 6-may, JP 28-may.
+const SUC_TIENDA: Record<string, { store: string; desdeEfe: string; desdeTar: string; hasta: string }> = {
+  BD: { store: "B1", desdeEfe: "2026-04-01", desdeTar: "2026-04-16", hasta: "2026-05-05" }, // Plaza (Alegra 6-may)
+  Q9: { store: "B2", desdeEfe: "2026-04-01", desdeTar: "2026-04-16", hasta: "2026-04-30" }, // Unioccidente (Alegra 1-may)
+  BQ: { store: "B3", desdeEfe: "2026-04-01", desdeTar: "2026-04-16", hasta: "2026-04-29" }, // Unicentro Norte (Alegra 30-abr)
+  D0: { store: "JP", desdeEfe: "2026-05-16", desdeTar: "2026-05-16", hasta: "2026-05-27" }, // Jardín Plaza (Alegra 28-may)
 };
 
 /** Fecha de venta de Linux: FEC-VTA viene como "2026/-04/-01"; si falta, se usa
@@ -53,6 +55,7 @@ export function parseLinux(buffer: Buffer): AlegraParseResult {
     if (!map) continue; // tienda cerrada / no continúa → es del cruce NL
     const date = fechaVenta(cFecVta >= 0 ? row[cFecVta] : null, cFecha >= 0 ? row[cFecha] : null);
     if (!date) continue;
+    if (date > map.hasta) continue; // desde aquí manda Alegra (evita duplicar)
     const fac = String(row[cFac] ?? i).trim();
     const efe = parseNumber(row[cEfe]);
     const tar = parseNumber(row[cTar]);
