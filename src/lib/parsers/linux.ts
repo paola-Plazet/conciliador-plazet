@@ -29,6 +29,28 @@ function fechaVenta(fecVta: unknown, fechaSerial: unknown): string | null {
   return fromExcelSerial(fechaSerial);
 }
 
+/** La columna TAR mezcla datáfono real con Addi/Rappi/Nequi/QR-Bold (la
+ * columna NOMTAR trae la marca). Solo TARJ.DEBITO/TARJ.CREDITO son datáfono
+ * de verdad; el resto NO debe compararse contra el datáfono (hallazgo real
+ * de Paola: Addi de Jardín Plaza estaba entrando como datáfono el 18-may). */
+function claseTarjeta(nomtar: string): "TARJETA_DEBITO" | "TARJETA_CREDITO" | "OTRO" {
+  const m = nomtar.toUpperCase();
+  if (m.includes("TARJ.CREDITO") || m.includes("TARJ CREDITO")) return "TARJETA_CREDITO";
+  if (m.includes("TARJ.DEBITO") || m.includes("TARJ DEBITO")) return "TARJETA_DEBITO";
+  return "OTRO";
+}
+
+/** Nombre de la plataforma para los pagos OTRO (va en `bodega` como
+ * "<tienda> · Linux · <plataforma>" para poder desglosarlo en el tablero). */
+function plataformaLinux(nomtar: string): string {
+  const m = nomtar.toUpperCase();
+  if (m.includes("ADDI")) return "Addi";
+  if (m.includes("RAPPI")) return "Rappi";
+  if (m.includes("NEQUI")) return "Nequi";
+  if (m.includes("QR")) return "QR";
+  return nomtar.trim() || "Otros";
+}
+
 export function parseLinux(buffer: Buffer): AlegraParseResult {
   const rows: unknown[][] = sheetRows(readWorkbook(buffer));
   const warnings: string[] = [];
@@ -40,6 +62,7 @@ export function parseLinux(buffer: Buffer): AlegraParseResult {
   const cFac = findCol(idx, "FAC");
   const cEfe = findCol(idx, "EFE");
   const cTar = findCol(idx, "TAR");
+  const cNomtar = findCol(idx, "NOMTAR");
   const cFecha = findCol(idx, "FECHA");
   const cFecVta = findCol(idx, "FEC-VTA");
   if (cSuc < 0 || cEfe < 0 || cTar < 0)
@@ -59,12 +82,17 @@ export function parseLinux(buffer: Buffer): AlegraParseResult {
     const fac = String(row[cFac] ?? i).trim();
     const efe = parseNumber(row[cEfe]);
     const tar = parseNumber(row[cTar]);
-    const base = { date, bodega: `${map.store} · Linux`, storeCode: map.store };
+    const base = { date, storeCode: map.store };
     if (efe !== 0 && date >= map.desdeEfe)
-      sales.push({ ...base, invoice: `L${fac}-EFE`, method: "EFECTIVO", amount: efe });
+      sales.push({ ...base, bodega: `${map.store} · Linux`, invoice: `L${fac}-EFE`, method: "EFECTIVO", amount: efe });
     if (tar !== 0) {
-      if (date >= map.desdeTar) sales.push({ ...base, invoice: `L${fac}-TAR`, method: "TARJETA_DEBITO", amount: tar });
-      else omitidasTar++;
+      if (date >= map.desdeTar) {
+        const nomtar = cNomtar >= 0 ? String(row[cNomtar] ?? "") : "";
+        const clase = claseTarjeta(nomtar);
+        const bodega =
+          clase === "OTRO" ? `${map.store} · Linux · ${plataformaLinux(nomtar)}` : `${map.store} · Linux`;
+        sales.push({ ...base, bodega, invoice: `L${fac}-TAR`, method: clase, amount: tar });
+      } else omitidasTar++;
     }
   }
 

@@ -1,7 +1,47 @@
 # Estado de la APP y el TABLERO — retomar aquí
 
-Última sesión: 21-jul-2026. Paola reinició el computador. Retomar con:
+Última sesión: 14-ago-2026. Retomar con:
 **"retomemos el conciliador, lee docs/estado-app-tablero.md"**
+
+## 14-ago-2026 — caso Mariana resuelto (ref de celular) + commit del motor nuevo
+- **Caso Mariana (Jineth Marian Salamanca)**: trabajaba en Unicentro Norte (B3) y
+  consignaba con la ref `3138845101` (su celular). Se trasladó a Plaza (B1)
+  ~05-ago y siguió consignando con su número → sobraba en B3 y faltaba en B1.
+  Corregido en BD (campo `reference` de las filas puntuales, NUNCA el mapeo
+  general `CashReference`): BankEntry **6352** (06-ago $402.850 = venta B1
+  05-ago exacta) y **6344** (10-ago $1.887.650 = ventas B1 06+07-ago, dif −$50)
+  reasignadas a `3102874360` (B1). Con eso agosto quedó CUADRA completo en B1 y
+  B3, salvo B3 06-ago: consignaron $1.000 de más (real).
+- **GOTCHA importante**: recargar el extracto del banco BORRA y recrea las filas
+  BankEntry → los fixes manuales de referencia se pierden (ya pasó: el fix del
+  id 5810 del 10-ago se perdió y hubo que rehacerlo como id 6352). Si se recarga
+  el extracto de agosto, rehacer la reasignación de esas 2 consignaciones.
+  Mariana se retiró el 8-ago-2026, así que no deberían aparecer casos nuevos;
+  si el patrón se repite con otra persona, considerar mapeo de referencias con
+  vigencia por fechas.
+- Scripts nuevos: `mariana-cruce.ts` (diagnóstico consignaciones + motor B3/B1
+  de un mes) y `mariana-fix.ts` (la reasignación puntual).
+- En este commit va también todo lo del 09/10-ago que estaba sin commitear:
+  motor EFECTIVO reescrito (bug de cascada), fix Addi/Rappi/Nequi del Linux,
+  página /resumen (ver sección siguiente).
+- Suelto: consignación 05-ago $105.050 ref `31483657` sigue sin tienda asignada
+  (ref de las cerradas NL, pendiente de Paola).
+
+## 09/10-ago-2026 — motor EFECTIVO reescrito + fix Addi/Rappi/Nequi + /resumen
+- **`conciliarEfectivo` rediseñado en dos fases** (bug de cascada hallado por
+  Paola en Unicentro mayo): (1) pase de calce EXACTO por consignación individual
+  y luego suma del mismo día, en barridas repetidas hasta no progresar, con
+  guard de distancia (`businessDaysBetween > maxGroupDays+4` → no intentar);
+  (2) el resto una fecha a la vez (más antigua primero) con el algoritmo de
+  respaldo, reintentando el pase exacto tras cada una. Validado contra TODO el
+  histórico abr–jul (ningún mes empeoró; abril 23→13, mayo 43→38).
+  Invariante en `scripts/test-unicentro.ts`.
+- **`linux.ts`**: Addi/Rappi/Nequi/QR-Bold venían dentro de la columna TAR como
+  si fueran datáfono (las 4 tiendas). Ahora se distinguen por NOMTAR
+  (`claseTarjeta`/`plataformaLinux`). Histórico recargado.
+- **Nueva página `/resumen`** (+ `/api/resumen`): totalizado de todo el
+  histórico por método de pago, por mes y por tienda; excluye los
+  SIN_CONCILIAR de borde (fuera de rango) para no inflar la "falta".
 
 ## Cómo levantar la app
 ```

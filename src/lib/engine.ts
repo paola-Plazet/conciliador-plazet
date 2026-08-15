@@ -98,12 +98,14 @@ function conciliarEfectivo(
     (s) => s.date,
     (s) => s.amount,
   );
-  const depositsByStore = groupByStoreDay(
-    bank.filter((b) => b.kind === "RECAUDO_EFECTIVO"),
-    (b) => b.storeCode,
-    (b) => b.date,
-    (b) => b.amount,
-  );
+
+  const cashEntries = bank.filter((b) => b.kind === "RECAUDO_EFECTIVO");
+  const entriesByStore = new Map<string, BankCashEntry[]>();
+  for (const b of cashEntries) {
+    const store = b.storeCode ?? "?";
+    if (!entriesByStore.has(store)) entriesByStore.set(store, []);
+    entriesByStore.get(store)!.push(b);
+  }
 
   // rango de fechas con datos de ventas (para distinguir "faltan ventas")
   const allSalesDates = sales.map((s) => s.date).sort();
@@ -111,112 +113,241 @@ function conciliarEfectivo(
 
   const storeCodes = new Set<string>([
     ...salesByStore.keys(),
-    ...depositsByStore.keys(),
+    ...entriesByStore.keys(),
   ]);
 
   for (const store of storeCodes) {
     const salesDays = sortedDays(salesByStore.get(store) ?? new Map());
-    const deposits = sortedDays(depositsByStore.get(store) ?? new Map());
-
     let ptr = 0; // índice del primer día de venta no conciliado
+    const seenDepDates = new Map<string, number>(); // ids únicos por fecha de depósito
 
-    for (const dep of deposits) {
-      // días de venta disponibles: índice >= ptr y estrictamente antes del depósito
+    const nextId = (date: string) => {
+      const n = (seenDepDates.get(date) ?? 0) + 1;
+      seenDepDates.set(date, n);
+      return n === 1 ? `EFECTIVO:${store}:${date}` : `EFECTIVO:${store}:${date}:${n}`;
+    };
+
+    // ── Pase 1: calce EXACTO, probando primero cada consignación
+    // INDIVIDUAL y —si ninguna calza sola— la SUMA de las del mismo día.
+    // Dos consignaciones del mismo día pueden ser cosas distintas: una el
+    // pago exacto de un día de venta, otra ajena (transferencia, ajuste).
+    // Sumarlas de entrada (como antes) arrastra el desfase a todas las
+    // consignaciones siguientes (bug real detectado por Paola en Unicentro
+    // Norte mayo: una consignación suelta del 8-may hacía parecer un
+    // descuadre de -$610.900 el 11-may, cuando en realidad ese depósito era
+    // el pago exacto y puntual del 7-may). Se repite en varias barridas
+    // porque, al resolver una consignación, el puntero avanza y libera el
+    // calce de otra que antes no alcanzaba (ver 707.000/459.300 del 6-may:
+    // una necesita que la otra se resuelva primero).
+    const tryMatch = (amount: number, beforeDate: string) => {
+      // Si el día pendiente más antiguo queda muy lejos de esta consignación,
+      // no se intenta: significa que hay un rezago sin resolver de antes (un
+      // hueco real que le toca al pase de respaldo, no a esta consignación
+      // posterior) y no una coincidencia. Sin este límite, una consignación
+      // meses después puede "calzar" por azar contra ese rezago viejo (bug
+      // real: julio calzó por coincidencia con ventas de mayo).
+      if (
+        ptr < salesDays.length &&
+        businessDaysBetween(salesDays[ptr].date, beforeDate, holidays) > maxGroupDays + 4
+      ) {
+        return null;
+      }
       const available: DayAmount[] = [];
       let j = ptr;
-      while (j < salesDays.length && salesDays[j].date < dep.date) {
+      while (j < salesDays.length && salesDays[j].date < beforeDate) {
+        available.push(salesDays[j]);
+        j++;
+      }
+      let cum = 0;
+      const limit = Math.min(available.length, maxGroupDays);
+      for (let k = 0; k < limit; k++) {
+        cum += available[k].amount;
+        if (within(cum, amount, tolerance)) return { matchEnd: k, sum: cum, available };
+      }
+      return null;
+    };
+
+    const recordMatch = (
+      date: string,
+      amount: number,
+      match: { matchEnd: number; sum: number; available: DayAmount[] },
+    ) => {
+      const days = match.available.slice(0, match.matchEnd + 1).map((d) => d.date);
+      const { expectedDate, daysLate } = computeLate(days, date, holidays);
+      results.push({
+        id: nextId(date),
+        channel: "EFECTIVO",
+        storeCode: store === "?" ? null : store,
+        storeName: storeName(store === "?" ? null : store),
+        method: "EFECTIVO",
+        depositDate: date,
+        depositAmount: amount,
+        salesDates: days,
+        salesAmount: match.sum,
+        difference: amount - match.sum,
+        status: "CUADRA",
+        expectedDate,
+        daysLate,
+        late: daysLate > 0,
+      });
+      ptr += match.matchEnd + 1;
+    };
+
+    const entries = entriesByStore
+      .get(store)
+      ?.slice()
+      .sort((a, b) => a.date.localeCompare(b.date) || a.amount - b.amount) ?? [];
+    const idxByDate = new Map<string, number[]>();
+    entries.forEach((e, i) => {
+      if (!idxByDate.has(e.date)) idxByDate.set(e.date, []);
+      idxByDate.get(e.date)!.push(i);
+    });
+    const entryDates = [...idxByDate.keys()].sort();
+    const done = new Array(entries.length).fill(false);
+
+    // Barre las consignaciones buscando calces EXACTOS (fecha por fecha,
+    // repitiendo hasta que una barrida completa no logre nada más: resolver
+    // una consignación puede destrabar otra que antes no alcanzaba, p.ej.
+    // dos consignaciones del mismo día que cubren cada una un solo día).
+    const runExactSweep = () => {
+      let progress = true;
+      while (progress) {
+        progress = false;
+        for (const date of entryDates) {
+          const idxs = idxByDate.get(date)!;
+          for (const i of idxs) {
+            if (done[i]) continue;
+            const m = tryMatch(entries[i].amount, date);
+            if (!m) continue;
+            recordMatch(date, entries[i].amount, m);
+            done[i] = true;
+            progress = true;
+          }
+          const remaining = idxs.filter((i) => !done[i]);
+          if (remaining.length >= 2) {
+            const sum = remaining.reduce((a, i) => a + entries[i].amount, 0);
+            const m = tryMatch(sum, date);
+            if (m) {
+              recordMatch(date, sum, m);
+              for (const i of remaining) done[i] = true;
+              progress = true;
+            }
+          }
+        }
+      }
+    };
+    runExactSweep();
+
+    // Lo que no calzó exacto se resuelve UNA fecha a la vez (la más antigua
+    // primero) con el algoritmo de respaldo de siempre (acumula días hasta
+    // la ventana esperada, aunque no cuadre exacto). Tras cada una se
+    // reintenta el calce exacto: liberar esa fecha puede destrabar una
+    // consignación posterior que sí calzaba justo (bug real: una
+    // consignación suelta sin relación con las ventas —ni sola ni sumada al
+    // resto de su día— forzaba a "tragarse" un día de venta que en realidad
+    // pertenecía, exacto, a una consignación de días después).
+    let pendingDates = entryDates.filter((d) => idxByDate.get(d)!.some((i) => !done[i]));
+    while (pendingDates.length > 0) {
+      const date = pendingDates[0];
+      const idxs = idxByDate.get(date)!.filter((i) => !done[i]);
+      const amount = idxs.reduce((a, i) => a + entries[i].amount, 0);
+
+      const available: DayAmount[] = [];
+      let j = ptr;
+      while (j < salesDays.length && salesDays[j].date < date) {
         available.push(salesDays[j]);
         j++;
       }
 
       const baseResult = {
-        id: `EFECTIVO:${store}:${dep.date}`,
+        id: nextId(date),
         channel: "EFECTIVO" as const,
         storeCode: store === "?" ? null : store,
         storeName: storeName(store === "?" ? null : store),
         method: "EFECTIVO" as const,
-        depositDate: dep.date,
-        depositAmount: dep.amount,
+        depositDate: date,
+        depositAmount: amount,
       };
 
       if (available.length === 0) {
         // No hay ventas previas en el archivo para esta consignación
-        const faltan = !salesMinDate || dep.date <= salesMinDate;
+        const faltan = !salesMinDate || date <= salesMinDate;
         results.push({
           ...baseResult,
           salesDates: [],
           salesAmount: 0,
-          difference: dep.amount,
+          difference: amount,
           status: "SIN_CONCILIAR",
           note: faltan
             ? "Faltan ventas previas en el archivo de Alegra (consignación de ventas anteriores al rango)."
             : "No hay ventas en efectivo pendientes para esta consignación.",
         });
-        continue;
-      }
-
-      // Acumular 1..maxGroupDays días buscando un calce dentro de tolerancia
-      let matchEnd = -1;
-      let cum = 0;
-      let bestCum = 0;
-      const limit = Math.min(available.length, maxGroupDays);
-      for (let k = 0; k < limit; k++) {
-        cum += available[k].amount;
-        if (within(cum, dep.amount, tolerance)) {
-          matchEnd = k;
-          bestCum = cum;
-          break;
-        }
-      }
-
-      if (matchEnd >= 0) {
-        const days = available.slice(0, matchEnd + 1).map((d) => d.date);
-        const { expectedDate, daysLate } = computeLate(days, dep.date, holidays);
-        results.push({
-          ...baseResult,
-          salesDates: days,
-          salesAmount: bestCum,
-          difference: dep.amount - bestCum,
-          status: within(bestCum, dep.amount, tolerance) ? "CUADRA" : "DIFERENCIA",
-          expectedDate,
-          daysLate,
-          late: daysLate > 0,
-        });
-        ptr += matchEnd + 1;
       } else {
-        // Sin calce: agrupar un PREFIJO CONTIGUO de los días pendientes, desde
-        // el más antiguo hasta el último día de la ventana esperada del
-        // depósito. Nunca se filtran días intermedios: si un día de venta no
-        // aparece en ningún depósito, debe verse como diferencia, no
-        // desaparecer (bug detectado por Paola: la venta del 11-jun de
-        // Unicentro se saltaba).
-        const expected = new Set(expectedSalesDays(dep.date, holidays));
-        let end = -1;
-        for (let k = 0; k < available.length; k++) {
-          if (expected.has(available[k].date)) end = k;
+        // Acumular 1..maxGroupDays días buscando un calce dentro de tolerancia
+        let matchEnd = -1;
+        let cum = 0;
+        let bestCum = 0;
+        const limit = Math.min(available.length, maxGroupDays);
+        for (let k = 0; k < limit; k++) {
+          cum += available[k].amount;
+          if (within(cum, amount, tolerance)) {
+            matchEnd = k;
+            bestCum = cum;
+            break;
+          }
         }
-        const group =
-          end >= 0
-            ? available.slice(0, end + 1)
-            : available.slice(0, Math.min(available.length, maxGroupDays));
-        const sum = group.reduce((a, d) => a + d.amount, 0);
-        const diff = dep.amount - sum;
-        const gDays = group.map((d) => d.date);
-        const { expectedDate, daysLate } = computeLate(gDays, dep.date, holidays);
-        results.push({
-          ...baseResult,
-          salesDates: gDays,
-          salesAmount: sum,
-          difference: diff,
-          status: within(sum, dep.amount, tolerance) ? "CUADRA" : "DIFERENCIA",
-          expectedDate,
-          daysLate,
-          late: daysLate > 0,
-        });
-        // consumir los días esperados para mantener la alineación
-        const consumed = group.length;
-        ptr += consumed > 0 ? consumed : 0;
+
+        if (matchEnd >= 0) {
+          const days = available.slice(0, matchEnd + 1).map((d) => d.date);
+          const { expectedDate, daysLate } = computeLate(days, date, holidays);
+          results.push({
+            ...baseResult,
+            salesDates: days,
+            salesAmount: bestCum,
+            difference: amount - bestCum,
+            status: within(bestCum, amount, tolerance) ? "CUADRA" : "DIFERENCIA",
+            expectedDate,
+            daysLate,
+            late: daysLate > 0,
+          });
+          ptr += matchEnd + 1;
+        } else {
+          // Sin calce: agrupar un PREFIJO CONTIGUO de los días pendientes, desde
+          // el más antiguo hasta el último día de la ventana esperada del
+          // depósito. Nunca se filtran días intermedios: si un día de venta no
+          // aparece en ningún depósito, debe verse como diferencia, no
+          // desaparecer (bug detectado por Paola: la venta del 11-jun de
+          // Unicentro se saltaba).
+          const expected = new Set(expectedSalesDays(date, holidays));
+          let end = -1;
+          for (let k = 0; k < available.length; k++) {
+            if (expected.has(available[k].date)) end = k;
+          }
+          const group =
+            end >= 0
+              ? available.slice(0, end + 1)
+              : available.slice(0, Math.min(available.length, maxGroupDays));
+          const sum = group.reduce((a, d) => a + d.amount, 0);
+          const diff = amount - sum;
+          const gDays = group.map((d) => d.date);
+          const { expectedDate, daysLate } = computeLate(gDays, date, holidays);
+          results.push({
+            ...baseResult,
+            salesDates: gDays,
+            salesAmount: sum,
+            difference: diff,
+            status: within(sum, amount, tolerance) ? "CUADRA" : "DIFERENCIA",
+            expectedDate,
+            daysLate,
+            late: daysLate > 0,
+          });
+          ptr += group.length;
+        }
       }
+
+      for (const i of idxs) done[i] = true;
+      runExactSweep(); // el puntero avanzó: reintentar por si destraba algo posterior
+      pendingDates = entryDates.filter((d) => idxByDate.get(d)!.some((i) => !done[i]));
     }
 
     // Días de venta que ningún depósito cubrió: pendientes por consignar

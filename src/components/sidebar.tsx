@@ -17,12 +17,14 @@ import {
   FileSpreadsheet,
   LayoutGrid,
   LogOut,
+  Wallet,
 } from "lucide-react";
 
 // minRol: quién ve cada sección (VIEWER < EDITOR < ADMIN)
 const NAV = [
   { href: "/", label: "Tablero", icon: LayoutDashboard, minRol: "VIEWER" },
   { href: "/tiendas", label: "Tiendas", icon: Store, minRol: "VIEWER" },
+  { href: "/resumen", label: "Resumen general", icon: Wallet, minRol: "VIEWER" },
   { href: "/cargar", label: "Cargar archivos", icon: Upload, minRol: "EDITOR" },
   { href: "/conciliacion", label: "Conciliación", icon: ListChecks, minRol: "VIEWER" },
   { href: "/configuracion", label: "Configuración", icon: Settings, minRol: "ADMIN" },

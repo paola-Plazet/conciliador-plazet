@@ -2,6 +2,11 @@
 
 # Conciliador Plazet
 
+> **INSTRUCCIÓN PERMANENTE**: al empezar a trabajar en este repo (cualquier
+> sesión nueva), lee primero `docs/estado-app-tablero.md` — ahí está el
+> estado más reciente, lo que quedó pendiente y en qué se iba a seguir. Hazlo
+> sin que Paola tenga que pedirlo explícitamente.
+
 Herramienta de conciliación de **efectivo** y **datáfono** para HABBIE SAS (5 tiendas Plazet).
 Compara las ventas del POS (Alegra) contra las consignaciones del banco y los recaudos del datáfono.
 
