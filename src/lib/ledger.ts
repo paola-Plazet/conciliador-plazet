@@ -26,6 +26,7 @@ import type {
   DataphoneEntry,
   QrBankEntry,
   ManualAdjustment,
+  ConciliationResult,
 } from "./types";
 
 /** Meses cerrados como Set("YYYY-MM") */
@@ -412,6 +413,33 @@ export async function computeLedger(): Promise<LedgerStatus> {
   }));
 
   const summary = conciliar({ sales, bank, datafono, qrBank, holidays, adjustments });
+
+  // Meses cerrados con foto: sus resultados se sirven CONGELADOS desde la foto
+  // tomada al cerrar, aunque después cambie el motor, el mapeo de referencias
+  // o se recargue un archivo. Un mes cerrado no vuelve a moverse.
+  const frozen = new Map<string, ConciliationResult[]>();
+  for (const st of statuses) {
+    if (!st.closed) continue;
+    try {
+      const snap = JSON.parse(st.snapshotJson) as ConciliationResult[];
+      if (Array.isArray(snap) && snap.length > 0) frozen.set(st.month, snap);
+    } catch {
+      // foto ilegible: ese mes se muestra con el cálculo vivo
+    }
+  }
+  if (frozen.size > 0) {
+    summary.results = [
+      ...summary.results.filter((r) => !frozen.has(r.month ?? r.depositDate.slice(0, 7))),
+      ...[...frozen.values()].flat(),
+    ];
+    summary.totals = {
+      cuadran: summary.results.filter((r) => r.status === "CUADRA").length,
+      diferencias: summary.results.filter((r) => r.status === "DIFERENCIA").length,
+      sinConciliar: summary.results.filter((r) => r.status === "SIN_CONCILIAR").length,
+      manuales: summary.results.filter((r) => r.status === "MANUAL").length,
+      tardias: summary.results.filter((r) => r.late).length,
+    };
+  }
 
   const maxDate = (dates: string[]): string | null =>
     dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null;

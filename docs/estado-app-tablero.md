@@ -1,7 +1,32 @@
 # Estado de la APP y el TABLERO — retomar aquí
 
-Última sesión: 14-ago-2026. Retomar con:
+Última sesión: 16-ago-2026. Retomar con:
 **"retomemos el conciliador, lee docs/estado-app-tablero.md"**
+
+## 16-ago-2026 — CIERRE DE MES (nueva página /meses)
+Pedido de Paola: poder cerrar un mes cuando esté todo conciliado y que no
+vuelva a moverse. Construido completo:
+- **Página `/meses` "Cierre de mes"** (sidebar, candado, minRol EDITOR):
+  lista los meses con estado (Cerrado / Listo para cerrar / N pendientes) y
+  totales. Cerrar con confirmación en dos pasos; reabrir SOLO ADMIN.
+- **Aceptar diferencias con nota**: si el mes tiene DIFERENCIA/SIN_CONCILIAR,
+  el panel "Revisar pendientes" lista cada una con campo de nota obligatorio;
+  aceptar = POST /api/adjust con las MISMAS salesDates + nota → queda MANUAL.
+  Cuando todo es CUADRA/MANUAL el mes queda "limpio" y se puede cerrar.
+- **Foto congelada**: al cerrar, /api/months guarda snapshotJson (los
+  resultados del mes) + closedBy/closedAt en MonthStatus (columnas nuevas,
+  db:push ya aplicado en Neon). computeLedger sirve los meses cerrados DESDE
+  LA FOTO (aunque cambie el motor, el refMap o se recargue un archivo) y
+  recuenta los totales. Reabrir borra la foto y vuelve al cálculo vivo.
+- El candado de ingesta ya existía (ledger.ts omite filas de meses cerrados
+  con aviso) — con la foto, el cierre queda blindado por los dos lados.
+- Validado con `scripts/test-cierre.ts` (cierra junio directo en BD, verifica
+  foto servida idéntica y totales, reabre y revierte). Build OK.
+- Estado real al 16-ago: ningún mes está limpio aún (abr 13 dif + 47 sin
+  conciliar, may 38+6, jun 38, jul 26, ago 11+4). Para cerrar toca aceptar
+  esas diferencias con nota en /meses. OJO: para meses con MUCHOS pendientes
+  (abril) puede convenir un "aceptar todos con una nota" — no construido aún,
+  proponérselo a Paola si le da pereza uno por uno.
 
 ## 14-ago-2026 — caso Mariana resuelto (ref de celular) + commit del motor nuevo
 - **Caso Mariana (Jineth Marian Salamanca)**: trabajaba en Unicentro Norte (B3) y

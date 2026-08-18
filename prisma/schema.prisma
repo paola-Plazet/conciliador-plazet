@@ -132,11 +132,13 @@ model DataphoneEntry {
 
 /// Estado de cierre de un mes de conciliación
 model MonthStatus {
-  id       Int       @id @default(autoincrement())
-  month    String    @unique // YYYY-MM
-  closed   Boolean   @default(false)
-  closedAt DateTime?
-  note     String?
+  id           Int       @id @default(autoincrement())
+  month        String    @unique // YYYY-MM
+  closed       Boolean   @default(false)
+  closedAt     DateTime?
+  closedBy     String? // email de quien cerró
+  snapshotJson String    @default("[]") // foto de los resultados al cerrar (se sirve congelada)
+  note         String?
 }
 
 /// Ajuste manual persistente (por id estable del resultado)
