@@ -1,7 +1,56 @@
 # Estado de la APP y el TABLERO — retomar aquí
 
-Última sesión: 16-ago-2026. Retomar con:
+Última sesión: 27-ago-2026. Retomar con:
 **"retomemos el conciliador, lee docs/estado-app-tablero.md"**
+
+## 27-ago-2026 (tarde) — script APLICADO en BD + "consignación en domingo" (falsa alarma)
+- Paola corrió `npx tsx scripts/limpieza-27ago.ts` (desde el chat con el prefijo `!`, que ejecuta en su PC
+  y sí puede escribir en Neon). Resultado: Mariana reasignada (BankEntry 6616 06-ago $402.850 y 6608
+  10-ago $1.887.650 → ref 3102874360 B1), 12 Alegra B2 < 5-may borradas, Linux recargado, QR 14–25 ago
+  y MP 25–27 ago insertados, 132 aceptados con nota. Estado final: abr 0 dif / 0 sin conciliar (listo
+  para cerrar en /meses), may 23+2, jun 10, jul 5, ago 23+5. Quedan 68 pendientes reales (lista en la
+  salida del script; mayores: datáfono B3 23-may $630.000, Principal 1-may $766.600, 15 días QR de mayo).
+- Paola reportó "consignación en domingo" en Plaza (9-ago con falta $2.286.625). NO era corrimiento de
+  fechas: (a) la tabla de /tiendas pone el depósito en la fila del ÚLTIMO día de venta que cubre y (b) la
+  falta era el caso Mariana perdido (extracto recargado tras el 14-ago → ids nuevos). Verificado: 0 recaudos
+  en sáb/dom en todo el extracto; fechas son strings YYYY-MM-DD sin zona horaria (`scripts/diag-domingo-b1.ts`).
+  Mejora UI: la celda Depósito ahora muestra "consignado lun 24/08" debajo del monto.
+- Todo commiteado y pusheado (deploy Vercel) — `REF_FIXES` en `banco.ts` hace que Mariana sobreviva recargas.
+
+## 27-ago-2026 — REVISIÓN EXHAUSTIVA contra "movimientos bancos.xlsx" (aplicada esa tarde, ver arriba)
+Paola pidió cruzar TODO (efectivo, datáfono, QR, Mercado Pago, Rappi/Addi) contra el
+consolidado `Escritorio/HABBIE/PLAZET/MOVIMIENTOS BANCOS/movimientos bancos.xlsx` y
+verificar la pestaña «Abril día a día» del Estado de cuenta con Natural Light (Google
+Sheet 1F0prfniVTcQHxExNkYwAaxSW83V8V8jFJ6GTM2R_FB0). Reporte completo en el artifact
+"Revisión Bancos–Conciliador" (chat 27-ago).
+- **Alianza**: BD = consolidado al 100% (575 mov, 394 recaudos $304.685.088).
+- **Bancolombia**: abonos netos del datáfono = reporte Conciliar día a día (79/79).
+  QR estaba al 14-ago: faltaban 1 pago del 14 + 53 del 15–25 ago ($4.948.825). Además el
+  parser ignoraba TRANSFERENCIAS de clientes que el POS registra como QR Bancolombia
+  (99.800 20-ago, 790.500 corresponsal 19-ago, 820.353 Pavlove 15-jul = fac 989…) →
+  `datafono-banco.ts` ahora las lee (≥ $20.000, nunca CREDICORP).
+- **Mercado Pago**: faltaban 11 operaciones del 25–26 ago (+1 del 27-jul devuelta el mismo día, no se carga).
+- **Rappi**: la cuenta "Rappi" del consolidado es RappiPay (solo traslados NL/Paola/Jero); no hay
+  liquidaciones de ventas Rappi en ninguna cuenta. **Addi**: único candidato en banco 6-ago
+  "PAGO DE PROV CREDICORP CAPITAL" $3.394.441 — Paola debe confirmar.
+- **Código cambiado (sin commit)**: `linux.ts` cortes reales (tarjeta desde 23-abr B3 / 24-abr
+  B1-B2 = cuando arrancó el Credibanco de Habbie; Unioccidente en Linux hasta 4-may);
+  `ledger.ts` descarta Alegra B2 < 5-may (12 facturas duplicadas del 1-may); `banco.ts`
+  REF_FIXES (caso Mariana, sobrevive a recargas — el fix del 14-ago se había perdido OTRA VEZ);
+  `datafono-banco.ts` transferencias de clientes.
+- **Script `scripts/limpieza-27ago.ts`** (`--dry` = solo lectura, validado): aplica ref
+  3209052268→B3, Mariana, borra dup Alegra B2, recarga Linux, QR 14–25 ago + transferencias,
+  MP 25–26 ago, recalcula y acepta con nota 132 resultados por reglas (NL cerradas/abril,
+  transición datáfono, efectivo→QR con contraparte, pares que se compensan ±$1.500,
+  menores: efectivo ≤$5.000 / datáfono-QR ≤$1.500). Quedan 68 pendientes (5 son "fuera de
+  rango" del 26-ago y 15 son QR de mayo). **NO SE PUDO EJECUTAR** desde Claude (bloqueo de
+  escritura a la BD): Paola debe correr `npx tsx scripts/limpieza-27ago.ts` en el repo.
+- **Hoja «Abril día a día»** (hallazgos, en el artifact): consistente y = Linux día a día ✓;
+  efectivo→Habbie corroborado salvo: Unioccidente "sin consignar $80.000" SÍ entró (dep 4-may
+  $900.300); Sabana 10-11 abr marcados →NL entraron a Habbie ($479.600) + $13.150; San Pedro
+  +$122.000; Éxito Occidente NO calza día a día (un solo dep 20-abr $3.842.765 + $860.850 del
+  15-abr con ref de Unioccidente = 12-14 abr) → banco tiene ≈$918.000 MÁS que la hoja.
+  Datáfono→Habbie subestimado ≈$3.49M vs Credibanco de Habbie (transición 24-abr–4-may y JP).
 
 ## 16-ago-2026 — CIERRE DE MES (nueva página /meses)
 Pedido de Paola: poder cerrar un mes cuando esté todo conciliado y que no

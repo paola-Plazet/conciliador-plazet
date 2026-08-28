@@ -9,6 +9,7 @@ import {
   Banknote, CreditCard, QrCode, ShoppingBag, Wallet, Bike, Landmark,
   AlertTriangle, CheckCircle2, Clock4, FileClock, LayoutGrid,
 } from "lucide-react";
+import { dayOfWeek } from "@/lib/dates";
 
 interface DiaEfe {
   venta: number; deposito: number | null; depositoFecha: string | null;
@@ -40,6 +41,9 @@ interface ApiData {
 }
 
 const cop = (n: number) => "$" + Math.round(n).toLocaleString("es-CO");
+const DOW = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+/** "lun 24/08" — para dejar claro el día real en que se consignó */
+const diaCorto = (f: string) => `${DOW[dayOfWeek(f)]} ${f.slice(8)}/${f.slice(5, 7)}`;
 const MESES: Record<string, string> = {
   "01": "Enero", "02": "Febrero", "03": "Marzo", "04": "Abril", "05": "Mayo", "06": "Junio",
   "07": "Julio", "08": "Agosto", "09": "Septiembre", "10": "Octubre", "11": "Noviembre", "12": "Diciembre",
@@ -446,6 +450,12 @@ function FilaDia({ d, ver, canal }: { d: Dia; ver: (c: Canal) => boolean; canal:
           {e.deposito != null ? (
             <span title={`Depositado el ${e.depositoFecha} · cubre días ${e.grupo.map((g) => g.slice(8)).join("+")}`}>
               {cop(e.deposito)}{e.grupo.length > 1 && <span className="ml-1 text-[10px] text-gray-400">({e.grupo.length}d)</span>}
+              {/* El monto va en la fila del ÚLTIMO día de venta que cubre (ej. domingo);
+                  aquí se aclara el día real de la consignación para que no parezca que se
+                  consignó ese día. */}
+              {e.depositoFecha && (
+                <div className="text-[10px] leading-tight text-gray-400">consignado {diaCorto(e.depositoFecha)}</div>
+              )}
             </span>
           ) : e.estado === "AGRUPADO" ? <span className="text-[11px] text-gray-400">agrupado ↓</span>
             : e.estado === "PENDIENTE" && e.enPlazo ? <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-500">⏳ en plazo</span>

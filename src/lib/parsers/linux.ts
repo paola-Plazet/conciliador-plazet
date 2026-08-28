@@ -12,12 +12,16 @@ import type { AlegraParseResult } from "./alegra";
 // y el CORTE SUPERIOR `hasta` (último día que aporta Linux, = día antes de que
 // esa tienda arrancara en Alegra; así no se duplica con Alegra ni queda hueco).
 // EFECTIVO de B1/B2/B3 se pide de TODO abril (desde 1-abr); la TARJETA solo
-// desde el corte con NL (16-abr). Jardín Plaza entró el 16-may.
-// Arranque de Alegra: B3 30-abr, B2 1-may, B1 6-may, JP 28-may.
+// desde que el datáfono de HABBIE (Credibanco 901987494) empezó a recibir:
+// 23-abr en Unicentro Norte y 24-abr en Plaza/Unioccidente (verificado 27-ago
+// contra el reporte Conciliar y los abonos netos en Bancolombia; antes de eso el
+// datáfono era de NL y esos días viven en el cruce NL). Jardín Plaza 16-may.
+// Arranque real de Alegra: B3 30-abr, B2 5-may (las filas de Alegra del 1-may
+// de B2 son duplicados de Linux y se descartan en ledger.ts), B1 6-may, JP 28-may.
 const SUC_TIENDA: Record<string, { store: string; desdeEfe: string; desdeTar: string; hasta: string }> = {
-  BD: { store: "B1", desdeEfe: "2026-04-01", desdeTar: "2026-04-16", hasta: "2026-05-05" }, // Plaza (Alegra 6-may)
-  Q9: { store: "B2", desdeEfe: "2026-04-01", desdeTar: "2026-04-16", hasta: "2026-04-30" }, // Unioccidente (Alegra 1-may)
-  BQ: { store: "B3", desdeEfe: "2026-04-01", desdeTar: "2026-04-16", hasta: "2026-04-29" }, // Unicentro Norte (Alegra 30-abr)
+  BD: { store: "B1", desdeEfe: "2026-04-01", desdeTar: "2026-04-24", hasta: "2026-05-05" }, // Plaza (Alegra 6-may)
+  Q9: { store: "B2", desdeEfe: "2026-04-01", desdeTar: "2026-04-24", hasta: "2026-05-04" }, // Unioccidente (Alegra 5-may)
+  BQ: { store: "B3", desdeEfe: "2026-04-01", desdeTar: "2026-04-23", hasta: "2026-04-29" }, // Unicentro Norte (Alegra 30-abr)
   D0: { store: "JP", desdeEfe: "2026-05-16", desdeTar: "2026-05-16", hasta: "2026-05-27" }, // Jardín Plaza (Alegra 28-may)
 };
 

@@ -158,6 +158,10 @@ export async function ingestFiles(
       rows = esKarrot
         ? rows.filter((s) => s.date >= KARROT_CUTOVER)
         : rows.filter((s) => s.date < KARROT_CUTOVER);
+      // Unioccidente arrancó de verdad en Alegra el 5-may: las 12 facturas del 1-may
+      // son duplicados de Linux (el datáfono de Habbie y los depósitos de Alianza
+      // calzan con Linux, no con Alegra). Se descartan (verificado 27-ago-2026).
+      if (!esKarrot) rows = rows.filter((s) => !(s.storeCode === "B2" && s.date < "2026-05-05"));
       if (rows.length < before)
         warnings.push(
           esKarrot

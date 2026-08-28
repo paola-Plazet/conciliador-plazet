@@ -9,6 +9,16 @@ import type { BankCashEntry } from "../types";
 const RE_RECAUDO = /RECAUDO\s+REFE:?\s*0*(\d+)\s*-\s*EFECTIVO/i;
 const RE_CONSIG = /^CONSIG\.|TRANSFERENCIA|PAGO\s+POR\s+PSE/i;
 
+/** Consignaciones puntuales hechas con la referencia de OTRA tienda. Se corrigen
+ * aquí (y no en el mapeo general CashReference) para que la corrección sobreviva
+ * a cualquier recarga del extracto — recargar borra y recrea BankEntry.
+ * Caso real: Mariana (asesora) se trasladó de Unicentro Norte a Plaza el 5-ago-2026
+ * y siguió consignando con su celular 3138845101 (ref de B3). */
+const REF_FIXES: { date: string; amount: number; from: string; to: string }[] = [
+  { date: "2026-08-06", amount: 402850, from: "3138845101", to: "3102874360" }, // venta Plaza 5-ago
+  { date: "2026-08-10", amount: 1887650, from: "3138845101", to: "3102874360" }, // ventas Plaza 6+7-ago
+];
+
 export interface BancoParseResult {
   entries: BankCashEntry[];
   totalIngresos: number;
@@ -82,6 +92,8 @@ export function parseBanco(
     if (mRec) {
       kind = "RECAUDO_EFECTIVO";
       reference = mRec[1];
+      const fix = REF_FIXES.find((f) => f.date === date && f.from === reference && Math.abs(f.amount - amount) < 1);
+      if (fix) reference = fix.to;
     } else if (RE_CONSIG.test(conceptStr)) {
       kind = "CONSIG_TRANSFER";
     }

@@ -34,7 +34,18 @@ export function parseDatafonoBanco(buffer: Buffer): DatafonoBancoParseResult {
 
     // El canal "QR" recibe también transferencias por LLAVE (Bre-B): mismo
     // destino, distinto rótulo. Caso real 22-jul-2026: PAGO LLAVE RUBEN LOP.
-    if (cUpper.startsWith("PAGO QR") || cUpper.startsWith("PAGO LLAVE")) {
+    // Y transferencias/consignaciones de clientes que el POS registra como
+    // "QR Bancolombia" (verificado 27-ago-2026: TRANSFERENCIA CTA SUC VIRTUAL
+    // $99.800 del 20-ago, CONSIGNACION CORRESPONSAL $790.500 del 19-ago, PAGO DE
+    // PROV PAVLOVE $820.353 = fac 989). Solo montos ≥ $20.000 (los chicos suelen
+    // ser movimientos propios) y nunca CREDICORP (liquidación de otra plataforma).
+    const esTransferenciaCliente =
+      amount >= 20000 &&
+      !cUpper.includes("CREDICORP") &&
+      (cUpper.startsWith("TRANSFERENCIA CTA SUC VIRTUAL") ||
+        cUpper.startsWith("CONSIGNACION CORRESPONSAL") ||
+        cUpper.startsWith("PAGO DE PROV"));
+    if (cUpper.startsWith("PAGO QR") || cUpper.startsWith("PAGO LLAVE") || esTransferenciaCliente) {
       if (amount <= 0) continue; // reversos/ajustes no suman
       qr.push({
         date,
