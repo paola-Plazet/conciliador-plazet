@@ -114,6 +114,25 @@ model MercadopagoEntry {
   @@index([date])
 }
 
+/// Pedido web de Shopify (Plazet o Natural Light). Se sincroniza por API
+/// (client credentials) y se concilia contra los cobros de Mercado Pago —
+/// las dos tiendas cobran la web por la MISMA cuenta MP ya cargada.
+model ShopifyOrder {
+  id         Int     @id @default(autoincrement())
+  shop       String // PLAZET | NL
+  name       String // "#Plazet1801" / nombre del pedido
+  orderId    String  @unique // id numérico del pedido en Shopify
+  date       String // YYYY-MM-DD del PAGO, en hora Colombia (UTC-5)
+  amount     Float // total cobrado (transacciones SALE/CAPTURE exitosas)
+  refund     Float   @default(0) // total reembolsado
+  refundDate String? // YYYY-MM-DD Colombia del último reembolso
+  gateway    String // "Mercado Pago Checkout Pro", etc.
+  financial  String // PAID | REFUNDED | PARTIALLY_REFUNDED | ...
+
+  @@index([date])
+  @@index([shop])
+}
+
 /// Transacción del reporte Conciliar del datafono
 model DataphoneEntry {
   id            Int     @id @default(autoincrement())

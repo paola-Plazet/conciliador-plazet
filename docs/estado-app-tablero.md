@@ -3,6 +3,20 @@
 Última sesión: 27-ago-2026. Retomar con:
 **"retomemos el conciliador, lee docs/estado-app-tablero.md"**
 
+## 04-sep-2026 — NUEVO canal "Ventas web": Shopify (Plazet + NL) vs Mercado Pago
+- Página **/web** (sidebar "Ventas web", VIEWER+): pedidos de las tiendas online de Plazet y Natural Light
+  cruzados contra los cobros de la cuenta de Mercado Pago (una sola cuenta para las dos, la ya cargada por archivo).
+- Sync por API con botón "Sincronizar Shopify" (EDITOR+): `POST /api/shopify/sync` reemplaza los pedidos por tienda.
+  `src/lib/shopify.ts` usa **client credentials grant** (token 24h con client_id+secret; sin OAuth). Apps "Conciliador"
+  creadas en el Dev Dashboard de CADA organización (son orgs distintas): Plazet org 31767275, NL org 27585149;
+  scopes read_orders+read_all_orders. Credenciales en env: SHOPIFY_{PLAZET,NL}_{SHOP,CLIENT_ID,CLIENT_SECRET}
+  (Vercel Production + .env local). Fechas Shopify vienen en UTC → se convierten a Colombia (UTC-5).
+- Cruce (`GET /api/web`): por monto (±$100) + fecha (≤4 días), global sobre el histórico, vista filtrada por mes.
+  Muestra comisión y neto MP por pedido, reembolsos aparte, y alerta "sin cobro MP".
+- Modelo nuevo `ShopifyOrder` (db push aplicado 04-sep). Volumen real desde abr-2026: Plazet 54 pedidos $4,8M ·
+  NL 767 pedidos $86,3M. Prueba de conexión: `scripts/test-shopify.ts` (solo lectura).
+- Pendiente/futuro: traer Mercado Pago también por API (hoy sigue por archivo de liquidaciones).
+
 ## 27-ago-2026 (tarde) — script APLICADO en BD + "consignación en domingo" (falsa alarma)
 - Paola corrió `npx tsx scripts/limpieza-27ago.ts` (desde el chat con el prefijo `!`, que ejecuta en su PC
   y sí puede escribir en Neon). Resultado: Mariana reasignada (BankEntry 6616 06-ago $402.850 y 6608

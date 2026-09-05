@@ -46,3 +46,6 @@ next-env.d.ts
 
 # cliente Prisma generado
 /src/generated/
+
+.vercel
+.env*
