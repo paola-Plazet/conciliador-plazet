@@ -45,10 +45,22 @@ function aBase64(buf: ArrayBuffer): string {
   return btoa(s);
 }
 
-/** Sube una imagen a una nota ya creada. Devuelve el error (texto) o null. */
+const MAX_PDF = 3 * 1024 * 1024;
+
+export function esPdf(file: { type: string; name: string }): boolean {
+  return file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+}
+
+/** Sube una imagen (comprimida) o un PDF (tal cual, ≤3 MB) a una nota ya creada. Devuelve el error (texto) o null. */
 export async function subirAdjunto(noteId: number, file: File): Promise<string | null> {
   try {
-    const img = await comprimirImagen(file);
+    let img: ImagenLista;
+    if (esPdf(file)) {
+      if (file.size > MAX_PDF) return `${file.name}: el PDF pesa más de 3 MB.`;
+      img = { name: file.name, mime: "application/pdf", data: aBase64(await file.arrayBuffer()) };
+    } else {
+      img = await comprimirImagen(file);
+    }
     const res = await fetch("/api/notas/adjunto", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -5,7 +5,75 @@
 // Addi). Tarjetas por canal, gráfico diario y tabla día a día, sin Excel.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { subirAdjunto } from "@/lib/imagen-cliente";
+import { subirAdjunto, esPdf } from "@/lib/imagen-cliente";
+
+/** Tipos que aceptan los selectores de adjuntos */
+const ACEPTA_ADJUNTOS = "image/*,application/pdf,.pdf";
+
+/** Adjunto ya guardado: miniatura (imagen, clic amplía) o ficha de PDF (clic abre en otra pestaña) */
+function AdjuntoChip({ a, puedeGestionar, onVer, onBorrar }: {
+  a: { id: number; name: string; mime: string; size: number };
+  puedeGestionar: boolean;
+  onVer: (img: { id: number; name: string }) => void;
+  onBorrar: (id: number) => void;
+}) {
+  const pdf = a.mime === "application/pdf";
+  const kb = Math.round(a.size / 1024);
+  return (
+    <div className="group relative">
+      {pdf ? (
+        <a
+          href={`/api/notas/adjunto/${a.id}`}
+          target="_blank"
+          rel="noreferrer"
+          title={`${a.name} · ${kb} KB — clic para abrir`}
+          className="flex h-16 w-24 flex-col items-center justify-center rounded-md border border-gray-200 bg-gray-50 px-1 text-center hover:border-plazet-500"
+        >
+          <span className="text-xl">📄</span>
+          <span className="w-full truncate text-[10px] text-gray-600">{a.name}</span>
+        </a>
+      ) : (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={`/api/notas/adjunto/${a.id}`}
+          alt={a.name}
+          title={`${a.name} · ${kb} KB — clic para ampliar`}
+          onClick={() => onVer({ id: a.id, name: a.name })}
+          className="h-16 w-16 cursor-zoom-in rounded-md border border-gray-200 object-cover hover:border-plazet-500"
+        />
+      )}
+      {puedeGestionar && (
+        <button
+          onClick={() => { if (confirm(`¿Borrar ${pdf ? "este PDF" : "esta imagen"}?`)) onBorrar(a.id); }}
+          title="Borrar adjunto"
+          className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow group-hover:flex"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Archivo elegido pero aún no subido (previsualización + quitar) */
+function PendienteChip({ f, url, onQuitar }: { f: File; url: string; onQuitar: () => void }) {
+  return (
+    <div className="relative">
+      {esPdf(f) ? (
+        <div title={f.name} className="flex h-16 w-24 flex-col items-center justify-center rounded-md border border-gray-200 bg-gray-50 px-1 text-center">
+          <span className="text-xl">📄</span>
+          <span className="w-full truncate text-[10px] text-gray-600">{f.name}</span>
+        </div>
+      ) : (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img src={url} alt={f.name} title={f.name} className="h-16 w-16 rounded-md border border-gray-200 object-cover" />
+      )}
+      <button onClick={onQuitar} title="Quitar" className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow">
+        ✕
+      </button>
+    </div>
+  );
+}
 import {
   Banknote, CreditCard, QrCode, ShoppingBag, Wallet, Bike, Landmark,
   AlertTriangle, CheckCircle2, Clock4, FileClock, LayoutGrid,
@@ -487,7 +555,7 @@ export default function TiendasPage() {
       <input
         ref={inputFotos}
         type="file"
-        accept="image/*"
+        accept={ACEPTA_ADJUNTOS}
         multiple
         className="hidden"
         onChange={(e) => { const id = adjuntarA; const files = e.target.files; e.target.value = ""; if (id) pegarFotos(id, files); }}
@@ -522,7 +590,7 @@ export default function TiendasPage() {
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-700">📝 Notas de revisión del mes</h2>
           <p className="mt-1 text-xs text-gray-500">
-            Las ven todos los usuarios (cada una dice quién la escribió) y se les pueden pegar fotos de los comprobantes. Claude las lee después para analizarlas y cuadrar juntas.
+            Las ven todos los usuarios (cada una dice quién la escribió) y se les pueden pegar fotos o PDF de los comprobantes. Claude las lee después para analizarlas y cuadrar juntas.
           </p>
           <div className="mt-3 flex flex-col gap-1.5">
             {notas.map((n) => (
@@ -537,10 +605,10 @@ export default function TiendasPage() {
                   <button
                     onClick={() => { setAdjuntarA(n.id); inputFotos.current?.click(); }}
                     disabled={subiendo}
-                    title="Pegar foto del comprobante"
+                    title="Pegar foto o PDF del comprobante"
                     className="text-gray-500 hover:text-plazet-700 disabled:opacity-50"
                   >
-                    📎 foto
+                    📎 adjuntar
                   </button>
                   {puedeGestionar && (
                     <>
@@ -554,25 +622,7 @@ export default function TiendasPage() {
                 {n.adjuntos?.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-2 pl-8">
                     {n.adjuntos.map((a) => (
-                      <div key={a.id} className="group relative">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/api/notas/adjunto/${a.id}`}
-                          alt={a.name}
-                          title={`${a.name} · ${Math.round(a.size / 1024)} KB — clic para ampliar`}
-                          onClick={() => setVerImg({ id: a.id, name: a.name })}
-                          className="h-16 w-16 cursor-zoom-in rounded-md border border-gray-200 object-cover hover:border-plazet-500"
-                        />
-                        {puedeGestionar && (
-                          <button
-                            onClick={() => { if (confirm("¿Borrar esta imagen?")) borrarAdjunto(a.id); }}
-                            title="Borrar imagen"
-                            className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow group-hover:flex"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
+                      <AdjuntoChip key={a.id} a={a} puedeGestionar={puedeGestionar} onVer={setVerImg} onBorrar={borrarAdjunto} />
                     ))}
                   </div>
                 )}
@@ -845,31 +895,21 @@ function TextoNota({ n, puedeEditar, onGuardar, onFotos, className }: {
       />
       <span className="flex flex-wrap items-center gap-2">
         <label className="cursor-pointer rounded-lg border border-dashed border-gray-300 px-2 py-1 text-[11px] text-gray-600 hover:border-plazet-500 hover:text-plazet-700">
-          📎 Agregar fotos
+          📎 Agregar fotos o PDF
           <input
             type="file"
-            accept="image/*"
+            accept={ACEPTA_ADJUNTOS}
             multiple
             className="hidden"
             onChange={(e) => { const nuevos = Array.from(e.target.files ?? []); e.target.value = ""; if (nuevos.length) setFotos((f) => [...f, ...nuevos]); }}
           />
         </label>
-        {fotos.length > 0 && <span className="text-[11px] text-gray-400">{fotos.length} nueva{fotos.length > 1 ? "s" : ""} (se suben al guardar)</span>}
+        {fotos.length > 0 && <span className="text-[11px] text-gray-400">{fotos.length} archivo{fotos.length > 1 ? "s" : ""} nuevo{fotos.length > 1 ? "s" : ""} (se suben al guardar)</span>}
       </span>
       {fotos.length > 0 && (
         <span className="flex flex-wrap gap-2">
           {fotos.map((f, i) => (
-            <span key={i} className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={previews[i]} alt={f.name} title={f.name} className="h-14 w-14 rounded-md border border-gray-200 object-cover" />
-              <button
-                onClick={() => setFotos((arr) => arr.filter((_, j) => j !== i))}
-                title="Quitar"
-                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow"
-              >
-                ✕
-              </button>
-            </span>
+            <PendienteChip key={i} f={f} url={previews[i]} onQuitar={() => setFotos((arr) => arr.filter((_, j) => j !== i))} />
           ))}
         </span>
       )}
@@ -941,7 +981,7 @@ function NotaModal({ date, store, storeName, canal, existentes, puedeGestionar, 
                   {n.autor && <span className="text-[10px] text-gray-500" title={n.autor}>— {autorCorto(n.autor)}</span>}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px]">
-                  <button onClick={() => onAdjuntar(n.id)} className="text-gray-500 hover:text-plazet-700">📎 foto</button>
+                  <button onClick={() => onAdjuntar(n.id)} title="Pegar foto o PDF" className="text-gray-500 hover:text-plazet-700">📎 adjuntar</button>
                   {puedeGestionar && (
                     <>
                       <button onClick={() => onAccion(n.id, n.resolved ? "reopen" : "resolve")} className="font-medium text-plazet-700 hover:underline">
@@ -954,25 +994,7 @@ function NotaModal({ date, store, storeName, canal, existentes, puedeGestionar, 
                 {n.adjuntos?.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-2">
                     {n.adjuntos.map((a) => (
-                      <div key={a.id} className="group relative">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/api/notas/adjunto/${a.id}`}
-                          alt={a.name}
-                          title={`${a.name} — clic para ampliar`}
-                          onClick={() => onVerImg({ id: a.id, name: a.name })}
-                          className="h-16 w-16 cursor-zoom-in rounded-md border border-gray-200 object-cover hover:border-plazet-500"
-                        />
-                        {puedeGestionar && (
-                          <button
-                            onClick={() => { if (confirm("¿Borrar esta imagen?")) onBorrarAdjunto(a.id); }}
-                            title="Borrar imagen"
-                            className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow group-hover:flex"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
+                      <AdjuntoChip key={a.id} a={a} puedeGestionar={puedeGestionar} onVer={onVerImg} onBorrar={onBorrarAdjunto} />
                     ))}
                   </div>
                 )}
@@ -991,31 +1013,21 @@ function NotaModal({ date, store, storeName, canal, existentes, puedeGestionar, 
         />
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className="cursor-pointer rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:border-plazet-500 hover:text-plazet-700">
-            📎 Pegar foto del comprobante
+            📎 Pegar foto o PDF del comprobante
             <input
               type="file"
-              accept="image/*"
+              accept={ACEPTA_ADJUNTOS}
               multiple
               className="hidden"
               onChange={(e) => { const nuevos = Array.from(e.target.files ?? []); e.target.value = ""; if (nuevos.length) setFotos((f) => [...f, ...nuevos]); }}
             />
           </label>
-          {fotos.length > 0 && <span className="text-[11px] text-gray-400">{fotos.length} foto{fotos.length > 1 ? "s" : ""} (se comprimen al subir)</span>}
+          {fotos.length > 0 && <span className="text-[11px] text-gray-400">{fotos.length} archivo{fotos.length > 1 ? "s" : ""} (las fotos se comprimen al subir)</span>}
         </div>
         {fotos.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
             {fotos.map((f, i) => (
-              <div key={i} className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={previews[i]} alt={f.name} title={f.name} className="h-16 w-16 rounded-md border border-gray-200 object-cover" />
-                <button
-                  onClick={() => setFotos((arr) => arr.filter((_, j) => j !== i))}
-                  title="Quitar"
-                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow"
-                >
-                  ✕
-                </button>
-              </div>
+              <PendienteChip key={i} f={f} url={previews[i]} onQuitar={() => setFotos((arr) => arr.filter((_, j) => j !== i))} />
             ))}
           </div>
         )}

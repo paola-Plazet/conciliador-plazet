@@ -35,6 +35,9 @@ solo le permite `action: "edit"` sobre notas cuyo `autor` = su nombre/email. Res
 notas e imágenes sigue EDITOR+ y la página oculta esos botones al VIEWER (`/api/me` da name/email/rol).
 Editar = "✎ editar" junto al texto (componente `TextoNota`), en el modal del día y en la lista del mes.
 Una nota RESUELTA no se puede editar (ni por el autor ni por EDITOR+): hay que reabrirla primero.
+Al editar también se pueden agregar archivos. Adjuntos = fotos (comprimidas en el navegador) **o PDF**
+(tal cual, ≤3 MB; `application/pdf`); el PDF se muestra como ficha 📄 y abre en otra pestaña
+(`AdjuntoChip` / `PendienteChip`).
 
 **NUEVO formato de ventas Karrot — `karrot_pagos`** (`src/lib/parsers/karrot-pagos.ts`): el allsales
 nuevo trae UNA FILA POR PAGO ("Nombre/Valor Método de Pago", "Cancelado", "TipoCuenta" CR/DB,
