@@ -279,8 +279,30 @@ export default function TiendasPage() {
         const falt = totVenta - totBanco; // + = falta en banco, − = sobra
         return (
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700">QR Bancolombia — toda la empresa</h2>
-          <p className="mt-1 text-xs text-gray-500">Los pagos QR entran a una sola cuenta sin tienda; se comparan a nivel empresa.</p>
+          <h2 className="text-sm font-semibold text-gray-700">QR Bancolombia — por tienda</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Los pagos QR entran a una sola cuenta que no dice la tienda. El conciliador asigna cada pago a su
+            tienda cuando encuentra el mismo valor en las ventas; lo que no calza queda &quot;sin asignar&quot;.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
+            {api.stores.map((s) => {
+              const t2 = api.data[s.code]?.totales;
+              if (!t2 || (t2.qrVenta === 0 && t2.qrBanco === 0)) return null;
+              const difQr = t2.qrVenta - t2.qrSinCargar - t2.qrBanco;
+              return (
+                <div key={s.code} className={`rounded-lg border p-3 ${store === s.code ? "border-plazet-300 bg-plazet-50/50" : "border-gray-200 bg-gray-50"}`}>
+                  <div className="text-[11px] font-semibold text-gray-600">{s.name}</div>
+                  <div className="mt-1 flex items-baseline justify-between gap-2 text-xs text-gray-500">
+                    <span>venta {cop(t2.qrVenta)}</span>
+                    <span>banco {cop(t2.qrBanco)}</span>
+                  </div>
+                  <div className={`mt-1 text-xs ${difColor(difQr)}`}>
+                    {difTexto(difQr)}{t2.qrSinCargar > 0 && <span className="ml-1 text-[10px] text-gray-400">(📄 {cop(t2.qrSinCargar)} sin extracto)</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           {api.qrResumen && (api.qrResumen.asignado > 0 || api.qrResumen.sinAsignar > 0) && (
             <p className="mt-1 text-[11px] text-plazet-700">
               Asignado a tiendas por valor idéntico: {cop(api.qrResumen.asignado)} · sin asignar: {cop(api.qrResumen.sinAsignar)}
@@ -307,8 +329,8 @@ export default function TiendasPage() {
               tone={estadoDe(falt) === "cuadra" ? "ok" : estadoDe(falt) === "falta" ? "bad" : "warn"} />
             <Kpi label="Días descuadrados" value={String(api.qrEmpresa.filter((d) => Math.abs(d.dif) >= TOL).length)} />
           </div>
-          <details className="mt-3" open>
-            <summary className="cursor-pointer text-xs font-medium text-plazet-700">Ver día a día</summary>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-plazet-700">Ver día a día (toda la empresa)</summary>
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-8">
               {api.qrEmpresa.filter((d) => d.venta || d.banco).map((d) => (
                 <div key={d.date} className="flex items-center justify-between border-b border-gray-100 py-1 text-xs">
