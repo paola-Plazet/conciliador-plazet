@@ -40,6 +40,16 @@ SIN venta en el POS — en era Habbie: B1 27-abr $50.600 y $53.300, 28-abr $142.
 $106.950, 4-may $20.600, 5-may $102.300, 9-may $91.950; B2 30-abr $102.300, 7-may $18.150, 20-may $79.700 y
 $12.800 (≈$960K de mercancía que salió por Rappi sin factura en el POS, o facturada otro día/valor → revisar
 con Jerónimo). Tiendas "Plazet, C.C Viva Envigado" y "Plazet, Éxito Occidente" en los archivos = tiendas de NL.
+**Cruce INVERSO** (`scripts/rappi-verificar-pos.ts`, pedido de Paola: "lo que en Linux estaba como Rappi,
+¿existe en las liquidaciones?"): 41 ventas POS como Rappi abr–may → 20 exactas ✓, **9 con la orden el mismo
+día por 350/600/900 menos** (Rappi liquida unos pesos menos que el precio del POS: patrón repetido → reales),
+6 sin liquidación (24–26 abr: falta bajar el pago 23401032 "20–26 abr", está en el Historial de Pagos), 6 que
+NO están: B1 27-abr $57.300 (Linux; la orden suelta de $53.300 cc ese día podría ser, dif 4.000) y 5 de Alegra
+bodega "Rappi / Addi" de montos grandes (B1 6-may $193.500, B3 6-may $310.700, B1 14-may $310.900, B3 14-may
+$53.300, B1 22-may $184.400) = casi seguro **Addi**. Con el patrón -350 se marcaron Rappi 3 QR más de B2
+(`scripts/reclasificar-rappi-aprox.ts`): 7-may fac 552 $18.500 (orden $18.150), 20-may fac 1904 $80.050
+($79.700) y fac 1947 $13.150 ($12.800) → mayo queda en 13 QR sin pago. Órdenes Rappi sin nada en el POS:
+B1 27-abr $53.300 cc y B1 9-may $91.950 cash.
 
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
