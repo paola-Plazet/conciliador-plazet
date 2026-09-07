@@ -46,13 +46,15 @@ export async function PATCH(req: NextRequest) {
   if (!sesion) return NextResponse.json({ error: "Sesión requerida." }, { status: 401 });
   const body = (await req.json()) as { id?: number; action?: "edit" | "resolve" | "reopen" | "delete"; note?: string };
   if (!body.id || !body.action) return NextResponse.json({ error: "Faltan datos (id, action)." }, { status: 400 });
-  const nota = await prisma.dayNote.findUnique({ where: { id: body.id }, select: { autor: true } });
+  const nota = await prisma.dayNote.findUnique({ where: { id: body.id }, select: { autor: true, resolved: true } });
   if (!nota) return NextResponse.json({ error: "La nota no existe." }, { status: 404 });
   const esMia = !!nota.autor && (nota.autor === sesion.name || nota.autor === sesion.email);
   if (NIVEL[sesion.rol] < NIVEL.EDITOR && !(body.action === "edit" && esMia)) {
     return NextResponse.json({ error: "Tu rol solo permite editar tus propias notas." }, { status: 403 });
   }
   if (body.action === "edit") {
+    // una nota RESUELTA queda cerrada: para cambiarla hay que reabrirla primero (Paola, 07-sep)
+    if (nota.resolved) return NextResponse.json({ error: "La nota ya está resuelta; reábrela para editarla." }, { status: 409 });
     if (!body.note?.trim()) return NextResponse.json({ error: "La nota no puede quedar vacía." }, { status: 400 });
     await prisma.dayNote.update({ where: { id: body.id }, data: { note: body.note.trim() } });
   } else if (body.action === "delete") {

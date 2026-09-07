@@ -106,8 +106,8 @@ export default function TiendasPage() {
     fetch("/api/me").then((r) => (r.ok ? r.json() : null)).then((d) => { if (d?.rol) setRol(d.rol); if (d) setYo({ name: d.name ?? "", email: d.email ?? "" }); }).catch(() => {});
   }, []);
   const puedeGestionar = rol !== "VIEWER";
-  /** editar el texto: EDITOR+ cualquiera; el de solo lectura solo las suyas */
-  const puedeEditarNota = (n: Nota) => puedeGestionar || (!!n.autor && (n.autor === yo.name || n.autor === yo.email));
+  /** editar el texto: EDITOR+ cualquiera; el de solo lectura solo las suyas. Una nota RESUELTA no se edita (reabrir primero). */
+  const puedeEditarNota = (n: Nota) => !n.resolved && (puedeGestionar || (!!n.autor && (n.autor === yo.name || n.autor === yo.email)));
   async function editarNota(id: number, note: string) {
     const res = await fetch("/api/notas", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "edit", note }) });
     if (!res.ok) { const j = (await res.json().catch(() => ({}))) as { error?: string }; alert(j.error ?? "No se pudo editar la nota."); }

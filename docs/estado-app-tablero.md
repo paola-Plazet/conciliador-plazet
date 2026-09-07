@@ -34,6 +34,7 @@ Alegra 7-sep · Shopify 6-sep. Notas en BD: 0. Asignaciones manuales QR: 0 (Paol
 solo le permite `action: "edit"` sobre notas cuyo `autor` = su nombre/email. Resolver/reabrir/borrar
 notas e imágenes sigue EDITOR+ y la página oculta esos botones al VIEWER (`/api/me` da name/email/rol).
 Editar = "✎ editar" junto al texto (componente `TextoNota`), en el modal del día y en la lista del mes.
+Una nota RESUELTA no se puede editar (ni por el autor ni por EDITOR+): hay que reabrirla primero.
 
 **NUEVO formato de ventas Karrot — `karrot_pagos`** (`src/lib/parsers/karrot-pagos.ts`): el allsales
 nuevo trae UNA FILA POR PAGO ("Nombre/Valor Método de Pago", "Cancelado", "TipoCuenta" CR/DB,
