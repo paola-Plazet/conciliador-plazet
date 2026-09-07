@@ -14,9 +14,21 @@ export async function aplicarOverrides(fechas?: string[]): Promise<number> {
   const overrides = await prisma.saleOverride.findMany({ where: fechas?.length ? { date: { in: fechas } } : undefined });
   let n = 0;
   for (const o of overrides) {
-    const ventas = await prisma.sale.findMany({
+    let ventas = await prisma.sale.findMany({
       where: { date: o.date, storeCode: o.storeCode, invoice: o.invoice, amount: { gte: o.amount - 1, lte: o.amount + 1 }, source: { notIn: ["linux", "karrot_devolucion"] } },
     });
+    if (ventas.length === 0) {
+      // El número de factura pudo cambiar con una recarga (ej. Alegra pasó del número
+      // de comprobante "527" al de factura "B1240"). Se busca por fecha/tienda/valor con
+      // el método ORIGINAL y, si hay una sola candidata, se adopta su número nuevo.
+      const cands = await prisma.sale.findMany({
+        where: { date: o.date, storeCode: o.storeCode, amount: { gte: o.amount - 1, lte: o.amount + 1 }, method: o.metodoOriginal, source: { notIn: ["linux", "karrot_devolucion"] } },
+      });
+      if (cands.length === 1) {
+        await prisma.saleOverride.update({ where: { id: o.id }, data: { invoice: cands[0].invoice, bodegaOriginal: cands[0].bodega } });
+        ventas = cands;
+      }
+    }
     for (const v of ventas) {
       const bodega = `${bodegaBase(v.bodega)} · ${o.plataforma}`;
       if (v.method === "OTRO" && v.bodega === bodega) continue; // ya aplicada

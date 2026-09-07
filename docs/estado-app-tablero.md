@@ -51,6 +51,18 @@ $53.300, B1 22-may $184.400) = casi seguro **Addi**. Con el patrón -350 se marc
 ($79.700) y fac 1947 $13.150 ($12.800) → mayo queda en 13 QR sin pago. Órdenes Rappi sin nada en el POS:
 B1 27-abr $53.300 cc y B1 9-may $91.950 cash.
 
+**QR CONTABILIZADOS COMO EFECTIVO (Alegra)** — Paola: "el efectivo del 16 y 17 no me suma; la columna
+Método dice Transferencia y la cuenta dice Efectivo POS". En el reporte de transacciones hay **23 filas de
+Plaza (16-may → 22-jun, $1.844.620)** con cuenta "Efectivo POS - PLAZET PLAZA" y método "Transferencia": son
+QR que la asesora contabilizó en la caja; TODOS aparecen en el banco como PAGO QR (`scripts/alegra-trans-cuenta-vs-metodo.ts`,
+`qr-en-efectivo-check.ts`). Fix en `alegra-trans.ts` `classify()`: en cuenta Efectivo POS manda el MÉTODO
+(Transferencia → canal QR). Reporte recargado (`cargar-archivo.ts`): B1 15–18 may pasa de −$175.700 a
+CUADRA; junio QR "sin asignar" baja de $1,71M a $194K. Notas 📝 "QR mal clasificado: …" creadas por
+día/tienda (17, autor Claude) con factura, valor y pagador del banco (`scripts/notas-qr-mal-clasificado.ts`,
+idempotente). OJO: al recargar Alegra los números de factura cambiaron (comprobante "527" → factura "B1240")
+y las reclasificaciones Rappi dejaron de calzar → `aplicarOverrides()` ahora se AUTOCORRIGE (busca por
+fecha/tienda/valor/método original y adopta el número nuevo si hay una sola candidata); las 12 quedaron bien.
+
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
 REAPLICA tras cada recarga de ventas (`aplicarOverrides()` al final de la ingesta en ledger.ts), así

@@ -19,12 +19,16 @@ import type { AlegraParseResult } from "./alegra";
 
 /** Clasifica el medio de pago combinando la cuenta contable y la columna
  * "Método de pago". La cuenta manda: así los QR quedan separados de otras
- * transferencias (Rappi/Addi/Mercadopago -> OTRO). */
+ * transferencias (Rappi/Addi/Mercadopago -> OTRO).
+ * EXCEPCIÓN (Paola, 07-sep-2026): en la cuenta "Efectivo POS" a veces se
+ * registra un pago con método "Transferencia" — es un QR que la asesora
+ * contabilizó en la caja (Plaza, 23 casos may–jun; todos aparecen en el banco
+ * como PAGO QR). Ahí manda el MÉTODO: va al canal QR, no al efectivo. */
 function classify(cuenta: string, metodo: string): PaymentMethod {
   const c = normalize(cuenta);
-  if (c.startsWith("EFECTIVO POS")) return "EFECTIVO";
-  if (c.includes("QR")) return "TRANSFERENCIA";
   const m = normalize(metodo);
+  if (c.startsWith("EFECTIVO POS")) return m.includes("TRANSFERENCIA") ? "TRANSFERENCIA" : "EFECTIVO";
+  if (c.includes("QR")) return "TRANSFERENCIA";
   if (m.includes("CREDITO")) return "TARJETA_CREDITO";
   if (m.includes("DEBITO")) return "TARJETA_DEBITO";
   return "OTRO";
