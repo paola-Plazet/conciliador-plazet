@@ -100,12 +100,20 @@ export async function GET() {
   }
   const mpBrutoDia = new Map<string, number>();
   for (const e of mpRows) mpBrutoDia.set(e.date, (mpBrutoDia.get(e.date) ?? 0) + e.bruto);
-  const mpDias = new Set<string>([...mpVentaDia.keys(), ...mpBrutoDia.keys()]);
-  for (const d of mpDias) {
-    const venta = mpVentaDia.get(d) ?? 0;
-    const bruto = mpBrutoDia.get(d) ?? 0;
+  // OJO: la venta web se factura en Karrot al día SIGUIENTE del cobro (se
+  // registra en la mañana), así que cruzar MP por día genera falta y sobra
+  // artificiales que se acumulan (medido 07-sep: ~$16M de falta y ~$20M de
+  // sobra fantasma). Se cruza por MES: el desfase de un día se cancela y
+  // queda solo la diferencia real.
+  const mpVentaMes = new Map<string, number>();
+  const mpBrutoMes = new Map<string, number>();
+  for (const [d, v] of mpVentaDia) mpVentaMes.set(d.slice(0, 7), (mpVentaMes.get(d.slice(0, 7)) ?? 0) + v);
+  for (const [d, v] of mpBrutoDia) mpBrutoMes.set(d.slice(0, 7), (mpBrutoMes.get(d.slice(0, 7)) ?? 0) + v);
+  for (const m of new Set([...mpVentaMes.keys(), ...mpBrutoMes.keys()])) {
+    const venta = mpVentaMes.get(m) ?? 0;
+    const bruto = mpBrutoMes.get(m) ?? 0;
     acumula(porMetodo.mercadopago, venta, bruto);
-    acumula(mesOf(porMes, d.slice(0, 7)), venta, bruto);
+    acumula(mesOf(porMes, m), venta, bruto);
   }
 
   // ── ADDI / RAPPI / NEQUI / OTROS: sin archivo de recaudo cargado en la app
