@@ -31,6 +31,15 @@ QR de MICHEL CASTRO (47.100 + 35.500, ambos en el banco el 8-may) → nuevo PASE
 del mismo pagador). Mayo pasa de 26 a 18 QR sin pago ($2,18M) y el empate 35.650 del 7-may se resolvió
 solo (el de Plaza era Rappi → el del banco es de Unioccidente). Órdenes Rappi de Plazet SIN venta en el
 POS: B1 4-may $20.600, 5-may $102.300, 9-may $91.950 (cash); B2 7-may $18.150 (¿la de $18.500 QR?).
+**Todas las liquidaciones** (`scripts/rappi-cruce-todos.ts [--aplicar]`; Paola bajó 7 = `report (1..7).xlsx`,
+los `download (N).xlsx` son copias idénticas): 1–5 abr, 6–12 abr, 27–30 abr, 1–3 may, 4–10 may, 11–17 may,
+18–24 may (faltan 13–26 abr y todo desde el 25-may). Resultado: 18 ya eran Rappi en el POS, 9 reclasificadas
+(las 7 de arriba + B2 11-may fac 952 $21.450 + B1 14-may fac 1275 $35.650 → mayo queda en 16 QR sin pago),
+4 en Linux como EFECTIVO (abril, cerrado; B1 27-abr $59.300 y 29-abr $71.300 son era Habbie), y 43 órdenes
+SIN venta en el POS — en era Habbie: B1 27-abr $50.600 y $53.300, 28-abr $142.600, 29-abr $76.800, 2-may
+$106.950, 4-may $20.600, 5-may $102.300, 9-may $91.950; B2 30-abr $102.300, 7-may $18.150, 20-may $79.700 y
+$12.800 (≈$960K de mercancía que salió por Rappi sin factura en el POS, o facturada otro día/valor → revisar
+con Jerónimo). Tiendas "Plazet, C.C Viva Envigado" y "Plazet, Éxito Occidente" en los archivos = tiendas de NL.
 
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
