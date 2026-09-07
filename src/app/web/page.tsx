@@ -23,6 +23,7 @@ interface Row {
   refund: number;
   refundDate: string | null;
   gateway: string;
+  esMp: boolean;
   financial: string;
   mp: MpMatch | null;
 }
@@ -32,6 +33,9 @@ interface ShopData {
     pedidos: number;
     cobradoWeb: number;
     reembolsos: number;
+    mpPedidos: number;
+    otras: number;
+    otrasMonto: number;
     conCobro: number;
     sinCobro: number;
     sinCobroMonto: number;
@@ -172,11 +176,12 @@ export default function WebPage() {
               </span>
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:grid-cols-7">
               <Kpi label="Pedidos pagados" value={String(t.pedidos)} />
               <Kpi label="Cobrado en la web" value={cop(t.cobradoWeb)} />
-              <Kpi label="Con cobro MP" value={`${t.conCobro} / ${t.pedidos}`} tone={t.sinCobro === 0 ? "ok" : undefined} />
+              <Kpi label="Con cobro MP" value={`${t.conCobro} / ${t.mpPedidos}`} tone={t.sinCobro === 0 ? "ok" : undefined} />
               <Kpi label="Sin cobro MP" value={t.sinCobro ? `${t.sinCobro} · ${cop(t.sinCobroMonto)}` : "0"} tone={t.sinCobro ? "bad" : "ok"} />
+              <Kpi label="Otras pasarelas" value={t.otras ? `${t.otras} · ${cop(t.otrasMonto)}` : "0"} />
               <Kpi label="Comisión MP" value={cop(t.comision)} />
               <Kpi label="Neto MP" value={cop(t.netoMp)} />
             </div>
@@ -214,8 +219,10 @@ export default function WebPage() {
                             <span title={`Operación MP ${r.mp.opId}${r.mp.release ? ` · liberado ${r.mp.release}` : ""}`}>
                               {fecha(r.mp.date)}{r.mp.diff !== 0 && <span className="ml-1 text-[10px] text-amber-600">(dif {cop(r.mp.diff)})</span>}
                             </span>
-                          ) : (
+                          ) : r.esMp ? (
                             <span className="text-red-600">—</span>
+                          ) : (
+                            <span className="text-gray-300">n/a</span>
                           )}
                         </td>
                         <td className="py-2 pr-3 text-right text-gray-500">{r.mp ? cop(r.mp.fee) : "—"}</td>
@@ -225,6 +232,8 @@ export default function WebPage() {
                             <Chip tone="warn" icon={<Undo2 size={12} />} text={`reembolsado ${cop(r.refund)}`} />
                           ) : r.mp ? (
                             <Chip tone="ok" icon={<CheckCircle2 size={12} />} text="cobrado" />
+                          ) : !r.esMp ? (
+                            <Chip tone="muted" icon={null} text={r.gateway.replace(" Latam v2", "").replace(" Payment", "").replace(" Checkout Pro", "")} />
                           ) : (
                             <Chip tone="bad" icon={<AlertTriangle size={12} />} text="sin cobro MP" />
                           )}
@@ -260,11 +269,12 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "ok"
   );
 }
 
-function Chip({ tone, icon, text }: { tone: "ok" | "bad" | "warn"; icon: React.ReactNode; text: string }) {
+function Chip({ tone, icon, text }: { tone: "ok" | "bad" | "warn" | "muted"; icon: React.ReactNode; text: string }) {
   const cls = {
     ok: "bg-plazet-50 text-plazet-700",
     bad: "bg-red-50 text-red-700",
     warn: "bg-amber-50 text-amber-700",
+    muted: "bg-gray-100 text-gray-500",
   }[tone];
   return (
     <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${cls}`}>

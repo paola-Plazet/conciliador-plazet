@@ -21,10 +21,15 @@ export async function GET(req: NextRequest) {
   const dayDiff = (a: string, b: string) =>
     Math.abs(Date.parse(a + "T00:00:00Z") - Date.parse(b + "T00:00:00Z")) / 86400000;
 
+  // Solo los pedidos pagados por Mercado Pago participan del cruce; los de
+  // otras pasarelas (Addi, PayU — usadas hasta jun-2026) se muestran aparte.
+  const esMp = (g: string) => /mercado\s*pago/i.test(g);
+
   // matching global orden → operación MP
   const used = new Array(mpRows.length).fill(false);
   const matchOf = new Map<number, number>(); // ShopifyOrder.id -> índice en mpRows
   for (const o of orders) {
+    if (!esMp(o.gateway)) continue;
     let best = -1;
     let bestScore = Infinity;
     for (let i = 0; i < mpRows.length; i++) {
@@ -62,6 +67,7 @@ export async function GET(req: NextRequest) {
         refund: o.refund,
         refundDate: o.refundDate,
         gateway: o.gateway,
+        esMp: esMp(o.gateway),
         financial: o.financial,
         mp: m
           ? {
@@ -77,14 +83,19 @@ export async function GET(req: NextRequest) {
       };
     });
     const sum = (f: (r: (typeof rows)[number]) => number) => rows.reduce((a, r) => a + f(r), 0);
-    const sinCobro = rows.filter((r) => !r.mp);
+    const deMp = rows.filter((r) => r.esMp);
+    const otras = rows.filter((r) => !r.esMp);
+    const sinCobro = deMp.filter((r) => !r.mp);
     shops[key] = {
       rows: [...rows].sort((a, b) => b.date.localeCompare(a.date)),
       totals: {
         pedidos: rows.length,
         cobradoWeb: sum((r) => r.amount),
         reembolsos: sum((r) => r.refund),
-        conCobro: rows.length - sinCobro.length,
+        mpPedidos: deMp.length,
+        otras: otras.length,
+        otrasMonto: otras.reduce((a, r) => a + r.amount, 0),
+        conCobro: deMp.length - sinCobro.length,
         sinCobro: sinCobro.length,
         sinCobroMonto: sinCobro.reduce((a, r) => a + r.amount, 0),
         brutoMp: sum((r) => r.mp?.bruto ?? 0),
