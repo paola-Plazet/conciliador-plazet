@@ -89,7 +89,7 @@ export default function TiendasPage() {
   const [store, setStore] = useState<string>("");
   const [canal, setCanal] = useState<Canal>("todo");
   const [loading, setLoading] = useState(true);
-  const [qrDia, setQrDia] = useState<string | null>(null); // día abierto en el detalle QR
+  const [qrDia, setQrDia] = useState<{ date: string; store?: string; label?: string } | null>(null); // detalle QR abierto
 
   useEffect(() => {
     setLoading(true);
@@ -268,7 +268,15 @@ export default function TiendasPage() {
           <tbody>
             {dias
               .filter((d) => canal === "todo" || montoCanal(d, canal) !== 0 || (canal === "efectivo" && d.efe.venta) || (canal === "datafono" && d.tar.venta) || (canal === "qr" && d.qrBanco))
-              .map((d) => <FilaDia key={d.date} d={d} ver={ver} canal={canal} onQrClick={setQrDia} />)}
+              .map((d) => (
+                <FilaDia
+                  key={d.date}
+                  d={d}
+                  ver={ver}
+                  canal={canal}
+                  onQrClick={(f) => setQrDia({ date: f, store, label: api.stores.find((s) => s.code === store)?.name ?? store })}
+                />
+              ))}
           </tbody>
         </table>
       </div>
@@ -336,7 +344,7 @@ export default function TiendasPage() {
               {api.qrEmpresa.filter((d) => d.venta || d.banco).map((d) => (
                 <button
                   key={d.date}
-                  onClick={() => setQrDia(d.date)}
+                  onClick={() => setQrDia({ date: d.date })}
                   title="Ver el detalle QR de este día"
                   className="flex w-full items-center justify-between border-b border-gray-100 py-1 text-left text-xs hover:bg-plazet-50"
                 >
@@ -388,7 +396,7 @@ export default function TiendasPage() {
         );
       })()}
 
-      {qrDia && <QrDetalleModal date={qrDia} destacada={store} onClose={() => setQrDia(null)} />}
+      {qrDia && <QrDetalleModal date={qrDia.date} store={qrDia.store} storeLabel={qrDia.label} onClose={() => setQrDia(null)} />}
 
       <p className="mt-4 text-xs text-gray-400">
         Datos al: ventas {api.cut.sales ?? "—"} · banco {api.cut.bank ?? "—"} · QR {api.cut.qr ?? "—"} · datafono {api.cut.datafono ?? "—"}
@@ -397,8 +405,9 @@ export default function TiendasPage() {
   );
 }
 
-/** Detalle QR de un día: facturas de TODAS las tiendas vs pagos del banco */
-function QrDetalleModal({ date, destacada, onClose }: { date: string; destacada?: string; onClose: () => void }) {
+/** Detalle QR de un día: facturas (de una tienda, o de todas si se abre desde
+ * el listado de empresa) vs los pagos TOTALES que entraron al banco ese día */
+function QrDetalleModal({ date, store, storeLabel, onClose }: { date: string; store?: string; storeLabel?: string; onClose: () => void }) {
   interface Det {
     facturas: { invoice: string; store: string; storeName: string; amount: number; pago: { date: string; amount: number; payer: string } | null }[];
     pagosDelDia: { amount: number; payer: string }[];
@@ -406,14 +415,14 @@ function QrDetalleModal({ date, destacada, onClose }: { date: string; destacada?
   const [det, setDet] = useState<Det | null>(null);
   useEffect(() => {
     setDet(null);
-    fetch(`/api/qr-dia?date=${date}`).then((r) => r.json()).then(setDet);
-  }, [date]);
+    fetch(`/api/qr-dia?date=${date}${store ? `&store=${store}` : ""}`).then((r) => r.json()).then(setDet);
+  }, [date, store]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-gray-800">
-            QR del {diaCorto(date)} — todas las tiendas
+            QR del {diaCorto(date)} — {storeLabel ?? "todas las tiendas"}
           </h3>
           <button onClick={onClose} className="rounded px-2 py-1 text-sm text-gray-500 hover:bg-gray-100">✕ cerrar</button>
         </div>
@@ -427,7 +436,7 @@ function QrDetalleModal({ date, destacada, onClose }: { date: string; destacada?
             <table className="mt-3 w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-[11px] uppercase tracking-wide text-gray-500">
-                  <th className="py-2 pr-2">Tienda</th>
+                  {!store && <th className="py-2 pr-2">Tienda</th>}
                   <th className="py-2 pr-2">Factura</th>
                   <th className="py-2 pr-2 text-right">Valor</th>
                   <th className="py-2">Pago en el banco</th>
@@ -435,11 +444,11 @@ function QrDetalleModal({ date, destacada, onClose }: { date: string; destacada?
               </thead>
               <tbody>
                 {det.facturas.length === 0 && (
-                  <tr><td colSpan={4} className="py-3 text-gray-400">Ninguna tienda facturó QR ese día.</td></tr>
+                  <tr><td colSpan={store ? 3 : 4} className="py-3 text-gray-400">No se facturó QR ese día.</td></tr>
                 )}
                 {det.facturas.map((f) => (
-                  <tr key={f.invoice} className={`border-b border-gray-100 ${f.store === destacada ? "bg-plazet-50/50" : ""}`}>
-                    <td className="py-2 pr-2 text-xs text-gray-500">{f.storeName}</td>
+                  <tr key={f.invoice} className="border-b border-gray-100">
+                    {!store && <td className="py-2 pr-2 text-xs text-gray-500">{f.storeName}</td>}
                     <td className="py-2 pr-2 font-medium text-gray-700">{f.invoice}</td>
                     <td className="py-2 pr-2 text-right">{cop(f.amount)}</td>
                     <td className="py-2">

@@ -10,6 +10,7 @@ export const runtime = "nodejs";
  * - más todos los pagos QR que entraron al banco ese día. */
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date") ?? "";
+  const store = req.nextUrl.searchParams.get("store"); // opcional: solo esa tienda
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: "Parámetro date requerido (YYYY-MM-DD)." }, { status: 400 });
   }
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
   const hasta = new Date(Date.parse(date) + 6 * 86400000).toISOString().slice(0, 10);
   const [facturas, pagos, stores] = await Promise.all([
     prisma.sale.findMany({
-      where: { method: "TRANSFERENCIA", date },
+      where: { method: "TRANSFERENCIA", date, ...(store ? { storeCode: store } : {}) },
       orderBy: [{ storeCode: "asc" }, { amount: "desc" }],
     }),
     prisma.qrEntry.findMany({ where: { date: { gte: desde, lte: hasta } }, orderBy: { date: "asc" } }),
