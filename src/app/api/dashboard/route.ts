@@ -9,7 +9,7 @@ import { computeLedger } from "@/lib/ledger";
 import { loadHolidays } from "@/lib/process";
 import { nextBusinessDay } from "@/lib/dates";
 import { STORES, storeName } from "@/lib/stores";
-import { CUENTAS_NO_QR } from "@/lib/alegra-api";
+import { CUENTAS_NO_QR, ALEGRA_CONFIABLE_HASTA } from "@/lib/alegra-api";
 
 export const runtime = "nodejs";
 
@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
   // muestran en su plataforma real.
   const otraPlatPorClave = new Map<string, string[]>(); // `${date}|${monto}` -> cuentas
   for (const a of alegraTransfers) {
+    if (a.date > ALEGRA_CONFIABLE_HASTA) continue; // Alegra sin detalle real después del 8-jul
     if (!inMonth(a.date) || !CUENTAS_NO_QR.includes(a.cuenta)) continue;
     const k = `${a.date}|${Math.round(a.amount)}`;
     const arr = otraPlatPorClave.get(k) ?? [];

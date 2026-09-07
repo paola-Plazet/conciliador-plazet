@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { ALEGRA_CONFIABLE_HASTA } from "@/lib/alegra-api";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,9 @@ export async function GET(req: NextRequest) {
     }),
     prisma.qrEntry.findMany({ where: { date: { gte: desde, lte: hasta } }, orderBy: { date: "asc" } }),
     prisma.store.findMany(),
-    prisma.alegraPago.findMany({ where: { date, metodo: "transfer" } }),
+    date <= ALEGRA_CONFIABLE_HASTA
+      ? prisma.alegraPago.findMany({ where: { date, metodo: "transfer" } })
+      : Promise.resolve([]),
   ]);
   const nombre = new Map(stores.map((s) => [s.code, s.name]));
   // cuenta destino según Alegra, por valor (multiconjunto: se consume una vez)

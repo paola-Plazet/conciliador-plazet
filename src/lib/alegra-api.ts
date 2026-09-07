@@ -72,6 +72,11 @@ export async function fetchAlegraPagosMes(month: string): Promise<AlegraPagoApi[
     }));
 }
 
+/** Alegra dejó de ser fuente confiable el 8-jul-2026 (dato de Paola, 07-sep):
+ * después de esa fecha los pagos se registran sin el detalle real de cuenta
+ * (solo Alianza / AH 3911). El cruce solo confía en Alegra hasta aquí. */
+export const ALEGRA_CONFIABLE_HASTA = "2026-07-08";
+
 /** Cuentas de Alegra que significan "esta transferencia NO es QR Bancolombia":
  * el POS la registró como transferencia pero la plata entró por otra
  * plataforma — no hay que esperarla en los PAGO QR del banco. */
