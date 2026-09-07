@@ -83,10 +83,14 @@ FLUJO: Claude saca por el conector `CUSTOMER_CREDIT_NOTES` (chiquito) y, para lo
 Validado 2-sep: JP pasa a CUADRA (devolvió $98.910 en efectivo), B3 datáfono queda CUADRA (+500) y
 efectivo −$56.100 (la real); septiembre: datáfono 0 diferencias, efectivo 1. Cargados: NC 48–51 (sep) y
 cierre del 2-sep. PENDIENTE: backfill jul–ago (NC + cierres de esos días) y el cierre del 7-sep (NC 50/51).
-**API de Karrot**: Paola pasó una API key el 07-sep (NO quedó guardada en el repo ni en .env — el
-clasificador bloqueó escribirla y probarla; Paola la tiene). Falta saber la URL base / documentación
-(en la web pública no hay nada; buscar en Karrot → Integraciones/API de donde salió la key). Con eso la
-app podría bajar sola ventas por método, NC y cierres, y Paola dejaría de subir el allsales.
+**API de Karrot**: Paola pasó una API key y la URL "de Claude" `https://d1vbt077gd3535.cloudfront.net`
+(= el servidor MCP del conector). Quedaron en `.env` local como `KARROT_MCP_URL` / `KARROT_API_KEY`
+(NO en Vercel ni en el repo). `scripts/karrot-mcp-probe.ts` y `-probe2.ts` prueban el saludo MCP
+(initialize) en `/`, `/mcp`, `/sse`, `/messages` con Bearer, x-api-key, Token, Basic, api-key, query
+`?apiKey=`… → SIEMPRE `401 {"status":"ERROR","message":"Unauthorized"}`. Lo más probable: el MCP usa
+OAuth (como el conector de claude.ai) y esa key es de otra cosa, o va en un header que no adivinamos.
+Falta la documentación/pantalla de Karrot de donde salió la key. Con eso la app podría bajar sola
+ventas por método, NC y cierres, y Paola dejaría de subir el allsales.
 `FINANCIAL_TRANSACTIONS` vino vacío para ese día. Horas: el allsales trae
 hora Colombia; los timestamps del MCP vienen con "Z" pero también son hora local (apertura de caja
 08:01Z, cierre 20:59Z) — no convertir.
