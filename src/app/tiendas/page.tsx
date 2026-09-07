@@ -256,8 +256,8 @@ export default function TiendasPage() {
               {ver("datafono") && <th className="px-3 py-3 text-right">Plink</th>}
               {ver("datafono") && <th className="px-3 py-3 text-right">Dif TAR</th>}
               {ver("qr") && <th className="px-3 py-3 text-right">QR venta</th>}
-              {canal === "qr" && <th className="px-3 py-3 text-right">QR banco</th>}
-              {canal === "qr" && <th className="px-3 py-3 text-right">Dif QR</th>}
+              {ver("qr") && <th className="px-3 py-3 text-right">QR banco</th>}
+              {ver("qr") && <th className="px-3 py-3 text-right">Dif QR</th>}
               {ver("mercadopago") && <th className="px-3 py-3 text-right">Mercadopago</th>}
               {ver("rappi") && <th className="px-3 py-3 text-right">Rappi</th>}
               {ver("addi") && <th className="px-3 py-3 text-right">Addi</th>}
@@ -454,9 +454,9 @@ function FilaDia({ d, ver, canal }: { d: Dia; ver: (c: Canal) => boolean; canal:
   if (ver("efectivo") && mostrarDifEfe && (e.venta || e.deposito) && !efeEnPlazo)
     tonos.push(e.estado === "CUADRA" || e.estado === "MANUAL" ? "cuadra" : estadoDe(-e.dif));
   if (ver("datafono") && (d.tar.venta || d.tar.plink) && !d.tar.sinCargar) tonos.push(estadoDe(d.tar.dif));
-  if (canal === "qr" && (d.qrVenta || d.qrBanco) && !d.qrSinCargar) tonos.push(estadoDe(d.qrDif));
+  if (ver("qr") && (d.qrVenta || d.qrBanco) && !d.qrSinCargar) tonos.push(estadoDe(d.qrDif));
   const hayEnPlazo = ver("efectivo") && efeEnPlazo;
-  const haySinCargar = (ver("datafono") && d.tar.sinCargar) || (canal === "qr" && d.qrSinCargar);
+  const haySinCargar = (ver("datafono") && d.tar.sinCargar) || (ver("qr") && d.qrSinCargar);
   const señales = {
     hayFalta: tonos.includes("falta"),
     haySobra: tonos.includes("sobra"),
@@ -498,8 +498,8 @@ function FilaDia({ d, ver, canal }: { d: Dia; ver: (c: Canal) => boolean; canal:
         </td>
       )}
       {ver("qr") && <td className="px-3 py-2 text-right">{d.qrVenta ? cop(d.qrVenta) : "—"}</td>}
-      {canal === "qr" && <td className="px-3 py-2 text-right text-gray-600">{d.qrSinCargar ? <span className="text-[11px] text-gray-400">📄</span> : d.qrBanco ? cop(d.qrBanco) : "—"}</td>}
-      {canal === "qr" && (
+      {ver("qr") && <td className="px-3 py-2 text-right text-gray-600">{d.qrSinCargar ? <span className="text-[11px] text-gray-400">📄</span> : d.qrBanco ? cop(d.qrBanco) : "—"}</td>}
+      {ver("qr") && (
         <td className={`px-3 py-2 text-right ${d.qrSinCargar ? "text-gray-400" : d.qrVenta || d.qrBanco ? difColor(d.qrDif) : "text-gray-300"}`}>
           {d.qrSinCargar ? "sin cargar" : d.qrVenta || d.qrBanco ? difTexto(d.qrDif) : "—"}
         </td>
