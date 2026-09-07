@@ -246,6 +246,10 @@ export async function ingestFiles(
                 method: s.method,
                 amount: s.amount,
                 source: esKarrot ? "karrot" : "alegra",
+                hora: s.hora ?? null,
+                franquicia: s.franquicia ?? null,
+                autorizacion: s.autorizacion ?? null,
+                ultimos4: s.ultimos4 ?? null,
               })),
             })
             .then(() => {}),
@@ -303,6 +307,8 @@ export async function ingestFiles(
                 gross: d.gross,
                 net: d.net,
                 terminal: d.terminal,
+                autorizacion: d.autorizacion ?? null,
+                ultimos4: d.ultimos4 ?? null,
               })),
             })
             .then(() => {}),

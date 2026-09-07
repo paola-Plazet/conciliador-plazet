@@ -29,6 +29,8 @@ export function parseDatafono(buffer: Buffer): DatafonoParseResult {
   const cTotal = findCol(idx, "VALOR TOTAL");
   const cNeto = findCol(idx, "VALOR NETO");
   const cTerminal = findCol(idx, "NO TERMINAL");
+  const cAuth = findCol(idx, "CODIGO AUTORIZACION", "CÓDIGO AUTORIZACIÓN", "CODIGO AUTORIZACIÓN");
+  const cTarjeta = findCol(idx, "TARJETA");
 
   const entries: DataphoneEntry[] = [];
   let totalGross = 0;
@@ -61,6 +63,9 @@ export function parseDatafono(buffer: Buffer): DatafonoParseResult {
       gross,
       net,
       terminal: String(row[cTerminal] ?? "").trim(),
+      autorizacion: cAuth >= 0 ? String(row[cAuth] ?? "").trim() || null : null,
+      // "************7250" → "7250"
+      ultimos4: cTarjeta >= 0 ? String(row[cTarjeta] ?? "").replace(/\D/g, "").slice(-4) || null : null,
     });
   }
 

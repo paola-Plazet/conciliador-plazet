@@ -42,6 +42,25 @@ Método de Pago". Cargado el 07-sep (`scripts/cargar-archivo.ts`, 8.702 ventas 8
 de 37 diferencias a 15 (datáfono 11→4, efectivo 18→6, QR 8→5); sep 5→3; julio igual (5). Este es el
 reporte que Paola debe bajar de Karrot de ahora en adelante (los formatos viejos siguen soportados).
 
+**DETALLE DATÁFONO transacción por transacción** (pedido de Paola): `Sale` guarda ahora `hora`,
+`franquicia`, `autorizacion`, `ultimos4` (solo los llena `karrot_pagos`; cada pago con tarjeta queda
+como su propia venta) y `DataphoneEntry` guarda `autorizacion` + `ultimos4` (Conciliar: CODIGO
+AUTORIZACION y TARJETA enmascarada). `GET /api/datafono-dia?date&store` cruza en pases: (1) misma
+autorización, (1b) misma tarjeta + autorización prefijo (en el POS se digita incompleta: 98898 vs 988984),
+(2) valor + últimos 4, (3) solo valor; devuelve cada pago del POS con su transacción (o "no está en el
+datáfono", o "aut. X por otro valor") y las transacciones del datáfono sin POS. En /tiendas la VENTA de
+datáfono del día es clicable → `DatafonoDetalleModal`. `scripts/datafono-revisar.ts [mes]` lo corre
+sobre todos los días con DIFERENCIA. Recargados datáfono jul/ago/sep (Conciliar 0701_0731, 0801_0831,
+0901_0907) + Karrot para llenar los códigos. Hallazgos: B3 8-ago fac 4371 $97.700 aut 515133 no está en
+el datáfono; B3 11-ago sobra VISA CR $99.000 aut 069254 sin POS; B2 5-ago sobra $18.400; JP 20-ago sobran
+$96.700 + $100.300 (misma tarjeta ····3911); B3 2-sep fac 7959 $9.400 vs datáfono $9.900 (····8643) y
+fac 7970 $56.000 sin autorización que no está en el datáfono.
+
+**Notas crédito NO vienen en el allsales** (Paola preguntó por una NC de $112.200 en B3 el 2-sep): el
+informe no trae filas negativas ni devoluciones. Ese día B3 tiene falta de efectivo $56.200 + el pago
+tarjeta de $56.000 (fac 7970) sin datáfono = $112.200 exactos → la NC explica el día. Falta una fuente
+de notas crédito de Karrot (reporte aparte o conector) para descontarlas automáticamente.
+
 **BUG corregido en la ingesta** (venía del "cargador acepta ZIP" de la noche anterior, a15f670): un
 .xlsx también empieza por "PK" y `expandZips` lo descomponía en sus XML internos → cualquier Excel
 subido desde ese deploy se ignoraba en silencio ("tipo de archivo no reconocido"). Ahora solo se

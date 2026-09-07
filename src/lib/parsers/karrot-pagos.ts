@@ -73,6 +73,11 @@ export function parseKarrotPagos(buffer: Buffer): AlegraParseResult {
   const cMet = findCol(idx, "NOMBRE MÉTODO DE PAGO", "NOMBRE METODO DE PAGO");
   const cVal = findCol(idx, "VALOR MÉTODO DE PAGO", "VALOR METODO DE PAGO");
   const cTipo = findCol(idx, "TIPOCUENTA", "TIPO CUENTA");
+  const cHora = findCol(idx, "HORA");
+  const cFranq = findCol(idx, "FRANQUICIA");
+  const cAuth = findCol(idx, "CODIGOAUTORIZACION", "CÓDIGO AUTORIZACIÓN", "CODIGO AUTORIZACION");
+  const cAuth2 = findCol(idx, "APPROVALCODE");
+  const c4 = findCol(idx, "CUATROSDIGITOS", "CUATRO DIGITOS", "ULTIMOS 4");
   if (cFac < 0 || cFecha < 0 || cMet < 0 || cVal < 0) {
     return { sales: [], totalInvoices: 0, totalAmount: 0, byMethod: {}, warnings: ["Karrot (pagos): faltan columnas (# Factura / Fecha / Nombre-Valor Método de Pago)."] };
   }
@@ -101,7 +106,12 @@ export function parseKarrotPagos(buffer: Buffer): AlegraParseResult {
     if (!metRaw) sinMetodo.add(keyFac);
     const met = metodo(metRaw, String(cTipo >= 0 ? (row[cTipo] ?? "") : ""));
     const bodega = met === "OTRO" ? `${nombre} · ${plataforma(metRaw)}` : nombre;
-    const key = `${keyFac}|${met}|${bodega}`;
+    const esTarjeta = met === "TARJETA_CREDITO" || met === "TARJETA_DEBITO";
+    const col = (c: number) => (c >= 0 ? String(row[c] ?? "").trim() : "");
+    const autorizacion = esTarjeta ? col(cAuth) || col(cAuth2) || null : null;
+    // cada transacción de tarjeta queda como su propia venta (para cruzarla una a
+    // una con el datáfono); los demás métodos de una misma factura se suman
+    const key = `${keyFac}|${met}|${bodega}${esTarjeta ? `|${autorizacion ?? `#${i}`}` : ""}`;
     const v = ventas.get(key) ?? {
       invoice: fac,
       date,
@@ -109,6 +119,10 @@ export function parseKarrotPagos(buffer: Buffer): AlegraParseResult {
       storeCode: CODIGO_TIENDA.get(codigo) ?? null,
       method: met,
       amount: 0,
+      hora: col(cHora).slice(0, 5) || null,
+      franquicia: esTarjeta ? col(cFranq).toUpperCase() || null : null,
+      autorizacion,
+      ultimos4: esTarjeta ? col(c4).replace(/\D/g, "").slice(-4) || null : null,
     };
     v.amount += parseNumber(row[cVal]);
     ventas.set(key, v);

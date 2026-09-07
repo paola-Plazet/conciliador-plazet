@@ -91,6 +91,7 @@ export default function TiendasPage() {
   const [canal, setCanal] = useState<Canal>("todo");
   const [loading, setLoading] = useState(true);
   const [qrDia, setQrDia] = useState<{ date: string; store?: string; label?: string } | null>(null); // detalle QR abierto
+  const [tarDia, setTarDia] = useState<{ date: string; store: string; label: string } | null>(null); // detalle datáfono abierto
   const [refresh, setRefresh] = useState(0);
   const [notaDe, setNotaDe] = useState<string | null>(null); // día al que se le agrega nota
   const [notas, setNotas] = useState<Nota[]>([]);
@@ -334,6 +335,7 @@ export default function TiendasPage() {
                   ver={ver}
                   canal={canal}
                   onQrClick={(f) => setQrDia({ date: f, store, label: api.stores.find((s) => s.code === store)?.name ?? store })}
+                  onTarClick={(f) => setTarDia({ date: f, store, label: api.stores.find((s) => s.code === store)?.name ?? store })}
                   onNota={setNotaDe}
                   tieneNota={notasKeys.has(`${d.date}|${store}`)}
                 />
@@ -470,6 +472,7 @@ export default function TiendasPage() {
       })()}
 
       {qrDia && <QrDetalleModal date={qrDia.date} store={qrDia.store} storeLabel={qrDia.label} onClose={() => setQrDia(null)} />}
+      {tarDia && <DatafonoDetalleModal date={tarDia.date} store={tarDia.store} storeLabel={tarDia.label} onClose={() => setTarDia(null)} />}
       {/* selector oculto: "📎 foto" en una nota de la lista lo dispara */}
       <input
         ref={inputFotos}
@@ -648,7 +651,118 @@ function QrDetalleModal({ date, store, storeLabel, onClose }: { date: string; st
   );
 }
 
-/** Agregar una nota de revisión a un día (tienda + canal actuales) */
+/** Detalle del datáfono de un día: cada pago con tarjeta del POS contra cada
+ * transacción del reporte Conciliar, para ver CUÁL es la que no cuadra. */
+function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: string; store: string; storeLabel: string; onClose: () => void }) {
+  interface Match { via: "autorizacion" | "valor+tarjeta" | "valor"; gross: number; net: number; franchise: string; cardType: string; ultimos4: string | null; autorizacion: string | null; difValor: number }
+  interface Det {
+    pos: { id: number; invoice: string; hora: string | null; franquicia: string | null; tipo: string; ultimos4: string | null; autorizacion: string | null; amount: number; match: Match | null }[];
+    sueltas: { id: number; franchise: string; cardType: string; gross: number; net: number; depositDate: string; autorizacion: string | null; ultimos4: string | null }[];
+    totales: { pos: number; datafono: number; dif: number };
+    tieneAutorizacion: boolean;
+  }
+  const [det, setDet] = useState<Det | null>(null);
+  useEffect(() => {
+    setDet(null);
+    fetch(`/api/datafono-dia?date=${date}&store=${store}`).then((r) => r.json()).then(setDet);
+  }, [date, store]);
+  const tarjeta = (f: string | null, t: string | null, u4: string | null) =>
+    [f || "", t ? (t.startsWith("CR") ? "crédito" : t.startsWith("DB") || t.startsWith("DEB") ? "débito" : t.toLowerCase()) : "", u4 ? `····${u4}` : ""].filter(Boolean).join(" ");
+  const sinCuadrar = det ? det.pos.filter((p) => !p.match || p.match.difValor !== 0).length + det.sueltas.length : 0;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="max-h-[85vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-gray-800">Datáfono del {diaCorto(date)} — {storeLabel}</h3>
+          <button onClick={onClose} className="rounded px-2 py-1 text-sm text-gray-500 hover:bg-gray-100">✕ cerrar</button>
+        </div>
+        {!det ? (
+          <p className="mt-4 text-sm text-gray-500">Cargando…</p>
+        ) : (
+          <>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
+              <span>POS: <b>{cop(det.totales.pos)}</b></span>
+              <span>Datáfono: <b>{cop(det.totales.datafono)}</b></span>
+              <span className={difColor(det.totales.dif)}>{difTexto(det.totales.dif)}</span>
+              {sinCuadrar > 0 ? (
+                <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-700">{sinCuadrar} transacción{sinCuadrar > 1 ? "es" : ""} por revisar</span>
+              ) : (
+                <span className="rounded-full bg-plazet-50 px-2 py-0.5 font-medium text-plazet-700">todo cruza una a una</span>
+              )}
+            </div>
+            <p className="mt-1 text-[11px] text-gray-400">
+              {det.tieneAutorizacion
+                ? "Cruce por código de autorización; si no lo hay, por valor y últimos 4 dígitos, y por último solo por valor."
+                : "Este día el POS no trae código de autorización (formato viejo): el cruce es solo por valor."}
+            </p>
+            <table className="mt-3 w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                  <th className="py-2 pr-2">Factura</th>
+                  <th className="py-2 pr-2">Hora</th>
+                  <th className="py-2 pr-2">Tarjeta (POS)</th>
+                  <th className="py-2 pr-2">Aut.</th>
+                  <th className="py-2 pr-2 text-right">Valor POS</th>
+                  <th className="py-2">En el datáfono</th>
+                </tr>
+              </thead>
+              <tbody>
+                {det.pos.length === 0 && <tr><td colSpan={6} className="py-3 text-gray-400">No hubo pagos con tarjeta en el POS ese día.</td></tr>}
+                {det.pos.map((p) => {
+                  const m = p.match;
+                  const mal = !m || m.difValor !== 0;
+                  return (
+                    <tr key={p.id} className={`border-b border-gray-100 ${mal ? "bg-red-50/60" : ""}`}>
+                      <td className="py-1.5 pr-2 font-medium text-gray-700">{p.invoice}</td>
+                      <td className="py-1.5 pr-2 text-xs text-gray-500">{p.hora ?? "—"}</td>
+                      <td className="py-1.5 pr-2 text-xs text-gray-600">{tarjeta(p.franquicia, p.tipo, p.ultimos4) || "—"}</td>
+                      <td className="py-1.5 pr-2 font-mono text-[11px] text-gray-500">{p.autorizacion ?? "—"}</td>
+                      <td className="py-1.5 pr-2 text-right">{cop(p.amount)}</td>
+                      <td className="py-1.5 text-xs">
+                        {!m ? (
+                          <span className="font-medium text-red-600">✗ no está en el datáfono</span>
+                        ) : m.difValor !== 0 ? (
+                          <span className="font-medium text-red-600">
+                            ⚠ aut. {m.autorizacion} por <b>{cop(m.gross)}</b> ({m.difValor > 0 ? "+" : ""}{cop(m.difValor)}) · {tarjeta(m.franchise, m.cardType, m.ultimos4)}
+                          </span>
+                        ) : (
+                          <span className="text-plazet-700">
+                            ✓ {cop(m.gross)} · {tarjeta(m.franchise, m.cardType, m.ultimos4)}
+                            <span className="ml-1 text-gray-400">({m.via === "autorizacion" ? `aut. ${m.autorizacion}` : m.via === "valor+tarjeta" ? "valor + tarjeta" : "solo valor"})</span>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <h4 className="mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-500">
+              Transacciones del datáfono que no tienen pago en el POS
+            </h4>
+            {det.sueltas.length === 0 ? (
+              <p className="mt-1 text-xs text-gray-400">Ninguna.</p>
+            ) : (
+              <table className="mt-2 w-full text-sm">
+                <tbody>
+                  {det.sueltas.map((t) => (
+                    <tr key={t.id} className="border-b border-gray-100 bg-amber-50/60">
+                      <td className="py-1.5 pr-2 text-xs text-gray-600">{tarjeta(t.franchise, t.cardType, t.ultimos4)}</td>
+                      <td className="py-1.5 pr-2 font-mono text-[11px] text-gray-500">aut. {t.autorizacion ?? "—"}</td>
+                      <td className="py-1.5 pr-2 text-xs text-gray-500">canje {diaCorto(t.depositDate)}</td>
+                      <td className="py-1.5 text-right font-medium text-amber-700">{cop(t.gross)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Nota de revisión de un día (la ven todos los usuarios, con su autor y sus fotos) */
 interface Nota {
   id: number;
@@ -802,7 +916,7 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "ok"
   );
 }
 
-function FilaDia({ d, ver, canal, onQrClick, onNota, tieneNota }: { d: Dia; ver: (c: Canal) => boolean; canal: Canal; onQrClick?: (date: string) => void; onNota?: (date: string) => void; tieneNota?: boolean }) {
+function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, tieneNota }: { d: Dia; ver: (c: Canal) => boolean; canal: Canal; onQrClick?: (date: string) => void; onTarClick?: (date: string) => void; onNota?: (date: string) => void; tieneNota?: boolean }) {
   const e = d.efe;
   const mostrarDifEfe = e.estado !== "AGRUPADO" && e.estado !== "SIN_VENTA";
 
@@ -858,7 +972,19 @@ function FilaDia({ d, ver, canal, onQrClick, onNota, tieneNota }: { d: Dia; ver:
           {efeEnPlazo ? "en plazo" : mostrarDifEfe && e.venta + (e.deposito ?? 0) !== 0 ? difTexto(-e.dif) : "—"}
         </td>
       )}
-      {ver("datafono") && <td className="px-3 py-2 text-right">{d.tar.venta ? cop(d.tar.venta) : "—"}</td>}
+      {ver("datafono") && (
+        <td className="px-3 py-2 text-right">
+          {d.tar.venta || d.tar.plink ? (
+            <button
+              className="underline decoration-dotted underline-offset-2 hover:text-plazet-700"
+              title="Ver el detalle del datáfono de este día (cada pago del POS vs cada transacción del datáfono)"
+              onClick={() => onTarClick?.(d.date)}
+            >
+              {d.tar.venta ? cop(d.tar.venta) : "—"}
+            </button>
+          ) : "—"}
+        </td>
+      )}
       {ver("datafono") && <td className="px-3 py-2 text-right text-gray-600">{d.tar.sinCargar ? <span className="text-[11px] text-gray-400">📄</span> : d.tar.plink ? cop(d.tar.plink) : "—"}</td>}
       {ver("datafono") && (
         <td className={`px-3 py-2 text-right ${d.tar.sinCargar ? "text-gray-400" : difColor(d.tar.dif)}`}>

@@ -72,6 +72,11 @@ model Sale {
   method    String // EFECTIVO | TARJETA_CREDITO | TARJETA_DEBITO | TRANSFERENCIA | OTRO
   amount    Float
   source    String @default("alegra") // alegra | historico
+  // detalle del pago (solo el formato Karrot "una fila por pago" lo trae):
+  hora         String? // HH:MM
+  franquicia   String? // VISA / MASTERCARD / AMEX (tarjeta)
+  autorizacion String? // código de autorización del datáfono (cruza con Conciliar)
+  ultimos4     String? // últimos 4 dígitos de la tarjeta
 
   @@index([date])
 }
@@ -145,6 +150,8 @@ model DataphoneEntry {
   gross         Float
   net           Float
   terminal      String
+  autorizacion  String? // CODIGO AUTORIZACION (cruza con el pago del POS)
+  ultimos4      String? // últimos 4 dígitos de TARJETA
 
   @@index([txDate])
 }

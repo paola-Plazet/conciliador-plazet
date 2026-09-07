@@ -19,6 +19,11 @@ export interface SaleInvoice {
   storeCode: string | null; // resuelto a código de tienda
   method: PaymentMethod;
   amount: number; // TOTAL - FACTURA
+  // detalle del pago (solo Karrot "una fila por pago"): para cruzar tarjeta a tarjeta
+  hora?: string | null;
+  franquicia?: string | null;
+  autorizacion?: string | null;
+  ultimos4?: string | null;
 }
 
 /** Un movimiento del extracto de la cuenta de EFECTIVO */
@@ -42,6 +47,8 @@ export interface DataphoneEntry {
   gross: number; // VALOR TOTAL (bruto, compara vs POS)
   net: number; // VALOR NETO (neto, llega al banco)
   terminal: string; // NO TERMINAL
+  autorizacion?: string | null; // CODIGO AUTORIZACION
+  ultimos4?: string | null; // últimos 4 de TARJETA
 }
 
 /** Un abono/movimiento del extracto de la cuenta del DATAFONO (CSV 191).
