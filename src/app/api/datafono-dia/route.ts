@@ -17,13 +17,16 @@ export async function GET(req: NextRequest) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !store) {
     return NextResponse.json({ error: "Parámetros date (YYYY-MM-DD) y store requeridos." }, { status: 400 });
   }
-  const [ventas, trans] = await Promise.all([
+  const [ventas, trans, devoluciones] = await Promise.all([
     prisma.sale.findMany({
-      where: { date, storeCode: store, method: { in: ["TARJETA_CREDITO", "TARJETA_DEBITO"] } },
+      where: { date, storeCode: store, method: { in: ["TARJETA_CREDITO", "TARJETA_DEBITO"] }, source: { not: "karrot_devolucion" } },
       orderBy: [{ hora: "asc" }, { invoice: "asc" }, { id: "asc" }],
     }),
     prisma.dataphoneEntry.findMany({ where: { txDate: date, storeCode: store }, orderBy: { id: "asc" } }),
+    // devoluciones por datáfono registradas en el cierre de caja de Karrot (negativas)
+    prisma.sale.findMany({ where: { date, storeCode: store, source: "karrot_devolucion", method: { in: ["TARJETA_CREDITO", "TARJETA_DEBITO"] } } }),
   ]);
+  const devueltoDatafono = devoluciones.reduce((s, d) => s + d.amount, 0);
 
   const auth = (a: string | null | undefined) => {
     const s = (a ?? "").trim();
@@ -115,7 +118,7 @@ export async function GET(req: NextRequest) {
   }
 
   const sueltas = tx.filter((t) => !t.used).map(({ used: _u, ...t }) => t);
-  const totalPos = pos.reduce((s, p) => s + p.amount, 0);
+  const totalPos = pos.reduce((s, p) => s + p.amount, 0) + devueltoDatafono; // neto de devoluciones
   const totalDat = tx.reduce((s, t) => s + t.gross, 0);
   const conAuth = pos.filter((p) => p.autorizacion).length;
 
@@ -124,6 +127,8 @@ export async function GET(req: NextRequest) {
     store,
     pos,
     sueltas,
+    /** devoluciones por datáfono del cierre de caja (negativo o 0): ya restadas de totales.pos */
+    devueltoDatafono,
     totales: { pos: totalPos, datafono: totalDat, dif: totalDat - totalPos },
     /** el POS de esa fecha trae códigos de autorización (formato Karrot nuevo) */
     tieneAutorizacion: conAuth > 0,

@@ -173,6 +173,47 @@ model DayNote {
   @@index([date])
 }
 
+/// Nota crédito de Karrot (conector MCP, reporte CUSTOMER_CREDIT_NOTES).
+model CreditNote {
+  id           Int    @id @default(autoincrement())
+  ncId         String @unique // Credit Note ID (UUID)
+  ncNumber     String // Credit note short ID (49, 50...)
+  date         String // YYYY-MM-DD
+  storeCode    String?
+  location     String
+  invoice      String // factura fiscal (Invoice number)
+  orderReceipt String // recibo de la venta (Sales order receipt) = # Factura del allsales
+  gross        Float
+  discount     Float
+  net          Float // gross - discount = lo que se devuelve
+  customer     String
+
+  @@index([date])
+}
+
+/// Cierre de caja de Karrot por método de pago (conector MCP, reporte
+/// CASHIER_BALANCE, solo filas "Cash drawer close"). Trae las DEVOLUCIONES por
+/// método (returns) y el faltante contado por la asesora (system vs counted).
+model CashierClose {
+  id             Int    @id @default(autoincrement())
+  batchId        String
+  date           String // YYYY-MM-DD (hora Colombia)
+  storeCode      String?
+  location       String
+  user           String
+  method         String // Efectivo | Datafono | Transferencia | Mercadopago | Rappi | Bono Regalo
+  saleIncome     Float
+  returns        Float // negativo
+  systemBalance  Float
+  countedBalance Float
+  withdrawal     Float
+  manualExpenses Float
+  manualIncome   Float
+
+  @@unique([batchId, method])
+  @@index([date])
+}
+
 /// Imagen (foto del comprobante) pegada a una nota de revisión. Se guarda en
 /// la misma BD (volumen bajo, comprimida en el navegador a ≤1600px JPEG).
 model NoteAttachment {

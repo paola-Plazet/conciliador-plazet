@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   const hasta = date;
   const [facturas, pagos, stores, alegra] = await Promise.all([
     prisma.sale.findMany({
-      where: { method: "TRANSFERENCIA", date, ...(store ? { storeCode: store } : {}) },
+      where: { method: "TRANSFERENCIA", date, source: { not: "karrot_devolucion" }, ...(store ? { storeCode: store } : {}) },
       orderBy: [{ storeCode: "asc" }, { amount: "desc" }],
     }),
     prisma.qrEntry.findMany({ where: { date: { gte: desde, lte: hasta } }, orderBy: { date: "asc" } }),

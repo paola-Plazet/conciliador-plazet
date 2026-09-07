@@ -171,7 +171,9 @@ export default function TiendasPage() {
     [dias],
   );
   const ver = (c: Canal) => canal === "todo" || canal === c;
-  const notasKeys = new Set(notas.filter((n) => !n.resolved).map((n) => `${n.date}|${n.storeCode ?? ""}`));
+  // cuántas notas (sin resolver) tiene cada día/tienda → badge en el 📝 del día
+  const notasPorDia = new Map<string, number>();
+  for (const n of notas) if (!n.resolved) { const k = `${n.date}|${n.storeCode ?? ""}`; notasPorDia.set(k, (notasPorDia.get(k) ?? 0) + 1); }
 
   if (loading && !api) return <div className="p-10 text-plazet-600">Cargando tablero…</div>;
   if (!api || !api.months.length)
@@ -337,7 +339,7 @@ export default function TiendasPage() {
                   onQrClick={(f) => setQrDia({ date: f, store, label: api.stores.find((s) => s.code === store)?.name ?? store })}
                   onTarClick={(f) => setTarDia({ date: f, store, label: api.stores.find((s) => s.code === store)?.name ?? store })}
                   onNota={setNotaDe}
-                  tieneNota={notasKeys.has(`${d.date}|${store}`)}
+                  nNotas={notasPorDia.get(`${d.date}|${store}`) ?? 0}
                 />
               ))}
           </tbody>
@@ -494,6 +496,12 @@ export default function TiendasPage() {
           store={store}
           storeName={api.stores.find((s) => s.code === store)?.name ?? store}
           canal={canal}
+          existentes={notas.filter((n) => n.date === notaDe && (n.storeCode ?? "") === store)}
+          puedeGestionar={puedeGestionar}
+          onAccion={notaAccion}
+          onAdjuntar={(id) => { setAdjuntarA(id); inputFotos.current?.click(); }}
+          onBorrarAdjunto={borrarAdjunto}
+          onVerImg={setVerImg}
           onSaved={() => setRefresh((x) => x + 1)}
           onClose={() => setNotaDe(null)}
         />
@@ -658,6 +666,7 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
   interface Det {
     pos: { id: number; invoice: string; hora: string | null; franquicia: string | null; tipo: string; ultimos4: string | null; autorizacion: string | null; amount: number; match: Match | null }[];
     sueltas: { id: number; franchise: string; cardType: string; gross: number; net: number; depositDate: string; autorizacion: string | null; ultimos4: string | null }[];
+    devueltoDatafono: number;
     totales: { pos: number; datafono: number; dif: number };
     tieneAutorizacion: boolean;
   }
@@ -681,7 +690,7 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
         ) : (
           <>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
-              <span>POS: <b>{cop(det.totales.pos)}</b></span>
+              <span>POS: <b>{cop(det.totales.pos)}</b>{det.devueltoDatafono !== 0 && <span className="text-gray-400"> (ya descontada la devolución por datáfono de {cop(-det.devueltoDatafono)} del cierre de caja)</span>}</span>
               <span>Datáfono: <b>{cop(det.totales.datafono)}</b></span>
               <span className={difColor(det.totales.dif)}>{difTexto(det.totales.dif)}</span>
               {sinCuadrar > 0 ? (
@@ -780,7 +789,17 @@ function autorCorto(a: string): string {
   return a.includes("@") ? a.split("@")[0] : a;
 }
 
-function NotaModal({ date, store, storeName, canal, onSaved, onClose }: { date: string; store: string; storeName: string; canal: Canal; onSaved: () => void; onClose: () => void }) {
+function NotaModal({ date, store, storeName, canal, existentes, puedeGestionar, onAccion, onAdjuntar, onBorrarAdjunto, onVerImg, onSaved, onClose }: {
+  date: string; store: string; storeName: string; canal: Canal;
+  /** notas ya guardadas para este día/tienda (de todos los usuarios) */
+  existentes: Nota[];
+  puedeGestionar: boolean;
+  onAccion: (id: number, action: "resolve" | "reopen" | "delete") => void;
+  onAdjuntar: (noteId: number) => void;
+  onBorrarAdjunto: (id: number) => void;
+  onVerImg: (img: { id: number; name: string }) => void;
+  onSaved: () => void; onClose: () => void;
+}) {
   const [texto, setTexto] = useState("");
   const [fotos, setFotos] = useState<File[]>([]);
   const [guardando, setGuardando] = useState(false);
@@ -810,14 +829,64 @@ function NotaModal({ date, store, storeName, canal, onSaved, onClose }: { date: 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-bold text-gray-800">📝 Nota — {storeName} · {diaCorto(date)}</h3>
+        <h3 className="text-sm font-bold text-gray-800">📝 Notas — {storeName} · {diaCorto(date)}</h3>
+        {existentes.length > 0 && (
+          <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-amber-100 bg-amber-50/50 p-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Notas de este día ({existentes.length})</p>
+            {existentes.map((n) => (
+              <div key={n.id} className={`mt-2 border-b border-amber-100 pb-2 text-xs last:border-0 ${n.resolved ? "opacity-50" : ""}`}>
+                <div className="flex flex-wrap items-start gap-2">
+                  <span className="flex-1 whitespace-pre-wrap text-gray-800">{n.note}</span>
+                  {n.autor && <span className="text-[10px] text-gray-500" title={n.autor}>— {autorCorto(n.autor)}</span>}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px]">
+                  <button onClick={() => onAdjuntar(n.id)} className="text-gray-500 hover:text-plazet-700">📎 foto</button>
+                  {puedeGestionar && (
+                    <>
+                      <button onClick={() => onAccion(n.id, n.resolved ? "reopen" : "resolve")} className="font-medium text-plazet-700 hover:underline">
+                        {n.resolved ? "reabrir" : "✓ resuelta"}
+                      </button>
+                      <button onClick={() => { if (confirm("¿Borrar esta nota?")) onAccion(n.id, "delete"); }} className="text-gray-400 hover:text-red-600">borrar</button>
+                    </>
+                  )}
+                </div>
+                {n.adjuntos?.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {n.adjuntos.map((a) => (
+                      <div key={a.id} className="group relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/api/notas/adjunto/${a.id}`}
+                          alt={a.name}
+                          title={`${a.name} — clic para ampliar`}
+                          onClick={() => onVerImg({ id: a.id, name: a.name })}
+                          className="h-16 w-16 cursor-zoom-in rounded-md border border-gray-200 object-cover hover:border-plazet-500"
+                        />
+                        {puedeGestionar && (
+                          <button
+                            onClick={() => { if (confirm("¿Borrar esta imagen?")) onBorrarAdjunto(a.id); }}
+                            title="Borrar imagen"
+                            className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow group-hover:flex"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{existentes.length ? "Agregar otra nota" : "Nueva nota"}</p>
         <textarea
           autoFocus
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           rows={4}
           placeholder="Ej: la diferencia es un pago que la clienta hizo por Nequi / valor pendiente por confirmar con la asesora…"
-          className="mt-3 w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-plazet-500 focus:outline-none"
+          className="mt-1 w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-plazet-500 focus:outline-none"
         />
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className="cursor-pointer rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:border-plazet-500 hover:text-plazet-700">
@@ -916,7 +985,8 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "ok"
   );
 }
 
-function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, tieneNota }: { d: Dia; ver: (c: Canal) => boolean; canal: Canal; onQrClick?: (date: string) => void; onTarClick?: (date: string) => void; onNota?: (date: string) => void; tieneNota?: boolean }) {
+function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: { d: Dia; ver: (c: Canal) => boolean; canal: Canal; onQrClick?: (date: string) => void; onTarClick?: (date: string) => void; onNota?: (date: string) => void; nNotas?: number }) {
+  const tieneNota = nNotas > 0;
   const e = d.efe;
   const mostrarDifEfe = e.estado !== "AGRUPADO" && e.estado !== "SIN_VENTA";
 
@@ -942,10 +1012,10 @@ function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, tieneNota }: { 
         {d.date.slice(8)}/{d.date.slice(5, 7)}
         <button
           onClick={() => onNota?.(d.date)}
-          title={tieneNota ? "Este día tiene notas — agregar otra" : "Agregar nota de revisión a este día"}
-          className={`ml-1.5 text-[11px] ${tieneNota ? "" : "opacity-30 hover:opacity-100"}`}
+          title={tieneNota ? `Este día tiene ${nNotas} nota${nNotas > 1 ? "s" : ""} — ver / agregar otra` : "Agregar nota de revisión a este día"}
+          className={`ml-1.5 text-[11px] ${tieneNota ? "rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800" : "opacity-30 hover:opacity-100"}`}
         >
-          📝
+          📝{tieneNota && <span className="ml-0.5">{nNotas}</span>}
         </button>
       </td>
       {ver("efectivo") && <td className="px-3 py-2 text-right">{e.venta ? cop(e.venta) : "—"}</td>}

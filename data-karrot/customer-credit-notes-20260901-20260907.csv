@@ -1,0 +1,5 @@
+Credit note short ID,Credit note date,Invoice number,Sales order receipt,Gross,Discount,Taxes,Status,Open amount,Customer,Customer Invoice ID,Order ID,Credit Note ID
+51,2026-09-07,3970,8572,57000,0,7200.84,CLOSED,0,Nelly Mahecha Maldonado,91ae6212-ee96-4ce8-a8b3-943ed2fd7256,b7ca60fb-5a4d-4ec1-9849-c2f08a357d2d,cc2fdb40-e521-4562-a446-7222ad9b9bef
+50,2026-09-07,3967,8569,33000,0,0,CLOSED,0,PAOLA TENORIO,0dec75da-9376-4973-a01e-af659edb931e,71ba2be6-f799-4057-a30d-572cc404b5ab,38f3cbeb-7c8f-44e8-8283-d6cfb15dd8ae
+49,2026-09-02,3361,7963,112200,56100,2671.43,CLOSED,0,JERONIMO DUQUE,a63fe49c-4598-4b19-a5d8-9b5327b69720,3366af97-779b-4630-8e4a-4335da07251d,98feac5e-8eeb-4cde-b278-03598d5fc224
+48,2026-09-02,3283,7885,109900,10990,15792.35,CLOSED,0,maria acosta,4113ebda-797a-4150-bf39-67fcf8123930,a6965caa-4fea-49ec-9498-352df731a9fb,a9d69da4-a60f-4ef6-9d89-30efeb4cae7e

@@ -222,7 +222,8 @@ export async function ingestFiles(
         rows,
         dateOf: (s) => s.date,
         closed,
-        // OJO: no borrar las ventas de Linux (source "linux"). Alegra/Karrot y
+        // OJO: no borrar las ventas de Linux (source "linux") ni las devoluciones
+        // sintéticas del cierre de caja (karrot_devolucion). Alegra/Karrot y
         // Linux son fuentes complementarias en el borde de la transición de
         // sistema; el corte por tienda en el parser de Linux evita duplicados.
         deleteRange: (from, to, openMonths) =>
@@ -230,7 +231,7 @@ export async function ingestFiles(
             .deleteMany({
               where: {
                 date: { gte: from, lte: to },
-                source: { not: "linux" },
+                source: { notIn: ["linux", "karrot_devolucion"] },
                 OR: openMonths.map((m) => ({ date: { startsWith: m } })),
               },
             })

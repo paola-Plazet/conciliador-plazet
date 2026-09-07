@@ -68,12 +68,26 @@ devolvió nada (los $56.000 reales cubren la 7970) → la dif de datáfono de es
 caja salieron $56.200 en efectivo (la asesora contó $804.500 vs $860.500 del sistema) → la falta de
 efectivo de $56.200 es REAL y coincide con el depósito. Regla aprendida: una NC registrada con el método
 equivocado mueve la diferencia de un canal a otro.
-**PRÓXIMO PASO propuesto**: fuente de devoluciones por método. La mejor es el cierre de caja de Karrot
-(`CASHIER_BALANCE`: por día/tienda/método trae Sale Income, Returns, System vs Counted Balance,
-Manual Expenses/Income) — netear `Returns` por canal y mostrar el faltante contado por la asesora.
-Pedirle a Paola el export de "Balances/Cierres de caja" y "Notas crédito" desde la web de Karrot (ago–sep)
-para construir los parsers sobre el formato real (los encabezados del export web vienen en español y
-distintos a los del MCP). `FINANCIAL_TRANSACTIONS` vino vacío para ese día. Horas: el allsales trae
+**DEVOLUCIONES POR MÉTODO — CONSTRUIDO (misma noche)**: tablas `CreditNote` (CUSTOMER_CREDIT_NOTES)
+y `CashierClose` (CASHIER_BALANCE, solo filas "Cash drawer close"), parsers en
+`src/lib/parsers/karrot-mcp.ts` (formato CSV del conector, encabezados en inglés) y
+`scripts/cargar-karrot-mcp.ts <csv...>`: guarda NC y cierres, y crea ventas NEGATIVAS sintéticas
+(`Sale.source = "karrot_devolucion"`, invoice `DEV-<batch>`) por cada `Returns` ≠ 0 del cierre, en el
+método del cierre (Efectivo→EFECTIVO, Datafono→TARJETA_DEBITO, Transferencia→TRANSFERENCIA). Así el
+motor, el tablero y el resumen descuentan la devolución del canal correcto sin tocar el engine. Las
+recargas de allsales NO borran esas filas (`deleteRange` excluye la fuente); `/api/qr-dia` y
+`/api/datafono-dia` las excluyen del listado (el datáfono las muestra como "ya descontada la devolución").
+El script también imprime el faltante contado por la asesora (System vs Counted del efectivo).
+FLUJO: Claude saca por el conector `CUSTOMER_CREDIT_NOTES` (chiquito) y, para los días con NC,
+`CASHIER_BALANCE` (≈10 KB/día todas las tiendas), guarda los CSV en `data-karrot/` y corre el script.
+Validado 2-sep: JP pasa a CUADRA (devolvió $98.910 en efectivo), B3 datáfono queda CUADRA (+500) y
+efectivo −$56.100 (la real); septiembre: datáfono 0 diferencias, efectivo 1. Cargados: NC 48–51 (sep) y
+cierre del 2-sep. PENDIENTE: backfill jul–ago (NC + cierres de esos días) y el cierre del 7-sep (NC 50/51).
+**API de Karrot**: Paola pasó una API key el 07-sep (NO quedó guardada en el repo ni en .env — el
+clasificador bloqueó escribirla y probarla; Paola la tiene). Falta saber la URL base / documentación
+(en la web pública no hay nada; buscar en Karrot → Integraciones/API de donde salió la key). Con eso la
+app podría bajar sola ventas por método, NC y cierres, y Paola dejaría de subir el allsales.
+`FINANCIAL_TRANSACTIONS` vino vacío para ese día. Horas: el allsales trae
 hora Colombia; los timestamps del MCP vienen con "Z" pero también son hora local (apertura de caja
 08:01Z, cierre 20:59Z) — no convertir.
 
