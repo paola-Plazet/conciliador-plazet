@@ -34,7 +34,7 @@ interface ApiData {
   months: string[]; month: string; stores: { code: string; name: string }[];
   data: Record<string, { days: Dia[]; totales: Totales }>;
   qrEmpresa: { date: string; venta: number; banco: number; dif: number }[];
-  qrResumen: { asignado: number; sinAsignar: number; revisar: { date: string; amount: number; stores: string[] }[] };
+  qrResumen: { asignado: number; sinAsignar: number; revisar: { date: string; amount: number; payer: string; stores: string[] }[] };
   mpEmpresa: { date: string; venta: number; bruto: number; neto: number; dif: number }[];
   mpResumen: { venta: number; bruto: number; neto: number; tieneRecaudo: boolean };
   cut: { sales: string | null; bank: string | null; qr: string | null; datafono: string | null };
@@ -90,6 +90,17 @@ export default function TiendasPage() {
   const [canal, setCanal] = useState<Canal>("todo");
   const [loading, setLoading] = useState(true);
   const [qrDia, setQrDia] = useState<{ date: string; store?: string; label?: string } | null>(null); // detalle QR abierto
+  const [refresh, setRefresh] = useState(0);
+
+  /** Resuelve un empate: asigna el pago QR a la tienda elegida y recarga */
+  async function asignarQr(r: { date: string; amount: number; payer: string }, storeCode: string) {
+    const res = await fetch("/api/qr-asignar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: r.date, amount: r.amount, payer: r.payer, store: storeCode }),
+    });
+    if (res.ok) setRefresh((x) => x + 1);
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -102,7 +113,7 @@ export default function TiendasPage() {
         setLoading(false);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
+  }, [month, refresh]);
 
   const tienda = api?.data?.[store];
   const dias = useMemo(() => tienda?.days ?? [], [tienda]);
@@ -324,8 +335,20 @@ export default function TiendasPage() {
               </p>
               <div className="mt-1 flex flex-col gap-0.5">
                 {api.qrResumen.revisar.map((r, i) => (
-                  <div key={i} className="text-[11px] text-amber-800">
-                    {r.date.slice(8)}/{r.date.slice(5, 7)} · {cop(r.amount)} · entre: {r.stores.join(" / ")}
+                  <div key={i} className="flex flex-wrap items-center gap-1.5 text-[11px] text-amber-800">
+                    <span>
+                      {r.date.slice(8)}/{r.date.slice(5, 7)} · {cop(r.amount)}{r.payer ? ` · ${r.payer}` : ""} — ¿de qué tienda es?
+                    </span>
+                    {r.stores.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => asignarQr(r, s)}
+                        className="rounded-full border border-amber-300 bg-white px-2 py-0.5 font-semibold text-amber-900 hover:bg-amber-100"
+                        title="Asignar este pago a esta tienda (queda guardado)"
+                      >
+                        {api.stores.find((x) => x.code === s)?.name ?? s}
+                      </button>
+                    ))}
                   </div>
                 ))}
               </div>

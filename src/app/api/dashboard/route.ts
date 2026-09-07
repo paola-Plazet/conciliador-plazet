@@ -29,11 +29,12 @@ interface DiaEfe {
 export async function GET(request: NextRequest) {
   const month = request.nextUrl.searchParams.get("month");
 
-  const [salesRows, dataRows, qrRows, mpRows, ledger, holidaysArr] = await Promise.all([
+  const [salesRows, dataRows, qrRows, mpRows, manualQr, ledger, holidaysArr] = await Promise.all([
     prisma.sale.findMany(),
     prisma.dataphoneEntry.findMany(),
     prisma.qrEntry.findMany(),
     prisma.mercadopagoEntry.findMany(),
+    prisma.qrAssignment.findMany(),
     computeLedger(),
     loadHolidays(),
   ]);
@@ -105,15 +106,37 @@ export async function GET(request: NextRequest) {
   // pagos idénticos como ventas, cada tienda tiene el suyo → se asignan. Si
   // entran menos pagos que ventas (p.ej. una sola tienda recibió), queda para
   // revisar y asignar a mano (no adivinamos a cuál pertenece).
-  const qrRevisar: { date: string; amount: number; stores: string[] }[] = [];
+  const qrRevisar: { date: string; amount: number; payer: string; stores: string[] }[] = [];
   // pagos del banco agrupados por valor
-  const bankByAmount = new Map<number, { date: string; used: boolean }[]>();
+  const bankByAmount = new Map<number, { date: string; payer: string; used: boolean }[]>();
   for (const q of qrRows) {
     if (!inMonth(q.date)) continue;
     const a = Math.round(q.amount);
     const arr = bankByAmount.get(a) ?? [];
-    arr.push({ date: q.date, used: false });
+    arr.push({ date: q.date, payer: q.payer, used: false });
     bankByAmount.set(a, arr);
+  }
+
+  // PASE 0 — asignaciones MANUALES: empates que el usuario ya resolvió en la
+  // UI ("¿de quién es?"). Se aplican primero y sobreviven recargas del
+  // extracto porque se guardan por (fecha, valor, pagador).
+  for (const a of manualQr) {
+    if (!inMonth(a.date)) continue;
+    const monto = Math.round(a.amount);
+    const pago = bankByAmount.get(monto)?.find((p) => !p.used && p.date === a.date && p.payer === a.payer);
+    if (!pago) continue;
+    let mejorVenta: (typeof qrSalesList)[number] | null = null;
+    let mejorDist = 99;
+    for (const v of qrSalesList) {
+      if (v.used || v.store !== a.storeCode || Math.abs(v.amount - monto) > 500) continue;
+      const dd = diaDif(v.date, a.date);
+      if (dd <= 6 && dd < mejorDist) { mejorVenta = v; mejorDist = dd; }
+    }
+    pago.used = true;
+    add(qrBancoTienda, a.storeCode, monto);
+    if (mejorVenta) { mejorVenta.used = true; add(qrBancoDia, `${a.storeCode}|${mejorVenta.date}`, monto); }
+    else add(qrBancoDia, `${a.storeCode}|${a.date}`, monto);
+    qrAsignado += monto;
   }
   // PASE 1 — valor EXACTO. Regla de conteo: si el valor está en 2+ tiendas pero
   // entraron MENOS pagos que ventas, se difiere al pase 2 (no se adivina aquí).
@@ -158,7 +181,7 @@ export async function GET(request: NextRequest) {
     const empatadas = cands.filter((c) => clave(c) === clave(best));
     if (new Set(empatadas.map((c) => c.store)).size > 1) {
       // empate real entre tiendas → no adivinar, revisar a mano
-      qrRevisar.push({ date: ref.date, amount, stores: [...new Set(cands.map((c) => c.store))] });
+      qrRevisar.push({ date: ref.date, amount, payer: ref.payer, stores: [...new Set(cands.map((c) => c.store))] });
       continue;
     }
     ref.used = true;

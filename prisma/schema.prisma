@@ -149,6 +149,22 @@ model DataphoneEntry {
   @@index([txDate])
 }
 
+/// Asignación MANUAL de un pago QR del banco a una tienda (para los empates:
+/// mismo valor vendido en 2+ tiendas el mismo día y menos pagos que ventas).
+/// Se guarda por (date, amount, payer) — no por id — para sobrevivir a las
+/// recargas del extracto (recargar borra y recrea QrEntry).
+model QrAssignment {
+  id        Int      @id @default(autoincrement())
+  date      String // YYYY-MM-DD del pago en el banco
+  amount    Float
+  payer     String
+  storeCode String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([date, amount, payer])
+}
+
 /// Estado de cierre de un mes de conciliación
 model MonthStatus {
   id           Int       @id @default(autoincrement())
