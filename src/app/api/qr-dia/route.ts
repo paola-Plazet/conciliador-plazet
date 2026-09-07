@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { ALEGRA_CONFIABLE_HASTA } from "@/lib/alegra-api";
+import { QR_DIAS_ANTES } from "@/lib/qr-reglas";
 
 export const runtime = "nodejs";
 
 /** Detalle QR de UN día, TODAS las tiendas, para revisar a mano:
  * - todas las facturas QR (ventas "QR Bancolombia") de ese día con su tienda, y
- * - para cada una, el pago del banco que mejor calza (mismo valor ±$500,
- *   hasta 6 días alrededor, prefiriendo el mismo día),
+ * - para cada una, el pago del banco que mejor calza (mismo valor ±$500, del
+ *   mismo día o hasta QR_DIAS_ANTES días ANTES — un QR nunca entra después de
+ *   facturado —, prefiriendo el mismo día),
  * - más todos los pagos QR que entraron al banco ese día. */
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date") ?? "";
@@ -15,8 +17,9 @@ export async function GET(req: NextRequest) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: "Parámetro date requerido (YYYY-MM-DD)." }, { status: 400 });
   }
-  const desde = new Date(Date.parse(date) - 6 * 86400000).toISOString().slice(0, 10);
-  const hasta = new Date(Date.parse(date) + 6 * 86400000).toISOString().slice(0, 10);
+  // regla: el pago QR entra el mismo día o hasta QR_DIAS_ANTES antes, nunca después de la factura
+  const desde = new Date(Date.parse(date) - QR_DIAS_ANTES * 86400000).toISOString().slice(0, 10);
+  const hasta = date;
   const [facturas, pagos, stores, alegra] = await Promise.all([
     prisma.sale.findMany({
       where: { method: "TRANSFERENCIA", date, ...(store ? { storeCode: store } : {}) },

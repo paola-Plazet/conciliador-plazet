@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   const notas = await prisma.dayNote.findMany({
     where: month ? { date: { startsWith: month } } : undefined,
     orderBy: [{ date: "desc" }, { id: "desc" }],
+    include: { adjuntos: { select: { id: true, name: true, mime: true, size: true }, orderBy: { id: "asc" } } },
   });
   return NextResponse.json({ notas });
 }
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
       storeCode: body.storeCode ?? null,
       channel: body.channel ?? "otro",
       note: body.note.trim(),
-      autor: sesion.email ?? null,
+      autor: sesion.name || sesion.email || null, // quién la escribió (la ven todos)
     },
   });
   return NextResponse.json({ ok: true, nota });

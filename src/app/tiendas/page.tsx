@@ -4,7 +4,8 @@
 // filtrar a un solo canal (efectivo / datafono / QR / Mercadopago / Rappi /
 // Addi). Tarjetas por canal, gráfico diario y tabla día a día, sin Excel.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { subirAdjunto } from "@/lib/imagen-cliente";
 import {
   Banknote, CreditCard, QrCode, ShoppingBag, Wallet, Bike, Landmark,
   AlertTriangle, CheckCircle2, Clock4, FileClock, LayoutGrid,
@@ -92,7 +93,26 @@ export default function TiendasPage() {
   const [qrDia, setQrDia] = useState<{ date: string; store?: string; label?: string } | null>(null); // detalle QR abierto
   const [refresh, setRefresh] = useState(0);
   const [notaDe, setNotaDe] = useState<string | null>(null); // día al que se le agrega nota
-  const [notas, setNotas] = useState<{ id: number; date: string; storeCode: string | null; channel: string; note: string; resolved: boolean }[]>([]);
+  const [notas, setNotas] = useState<Nota[]>([]);
+  const [verImg, setVerImg] = useState<{ id: number; name: string } | null>(null); // adjunto abierto en grande
+  const [adjuntarA, setAdjuntarA] = useState<number | null>(null); // nota a la que se le pegan fotos
+  const [subiendo, setSubiendo] = useState(false);
+  const inputFotos = useRef<HTMLInputElement>(null);
+
+  /** pega las fotos elegidas a una nota existente (desde la lista del mes) */
+  async function pegarFotos(noteId: number, files: FileList | null) {
+    if (!files?.length) return;
+    setSubiendo(true);
+    const errores: string[] = [];
+    for (const f of Array.from(files)) { const e = await subirAdjunto(noteId, f); if (e) errores.push(e); }
+    setSubiendo(false);
+    if (errores.length) alert(errores.join("\n"));
+    setRefresh((x) => x + 1);
+  }
+  async function borrarAdjunto(id: number) {
+    const res = await fetch("/api/notas/adjunto", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    if (res.ok) setRefresh((x) => x + 1);
+  }
 
   /** Resuelve un empate: asigna el pago QR a la tienda elegida y recarga */
   async function asignarQr(r: { date: string; amount: number; payer: string }, storeCode: string) {
@@ -444,6 +464,21 @@ export default function TiendasPage() {
       })()}
 
       {qrDia && <QrDetalleModal date={qrDia.date} store={qrDia.store} storeLabel={qrDia.label} onClose={() => setQrDia(null)} />}
+      {/* selector oculto: "📎 foto" en una nota de la lista lo dispara */}
+      <input
+        ref={inputFotos}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => { const id = adjuntarA; const files = e.target.files; e.target.value = ""; if (id) pegarFotos(id, files); }}
+      />
+      {verImg && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" onClick={() => setVerImg(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`/api/notas/adjunto/${verImg.id}`} alt={verImg.name} className="max-h-[92vh] max-w-[95vw] rounded-lg shadow-2xl" />
+        </div>
+      )}
       {notaDe && (
         <NotaModal
           date={notaDe}
@@ -458,19 +493,55 @@ export default function TiendasPage() {
       {notas.length > 0 && (
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-700">📝 Notas de revisión del mes</h2>
-          <p className="mt-1 text-xs text-gray-500">Lo que vas encontrando al revisar; Claude las lee después para analizarlas y cuadrar juntas.</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Las ven todos los usuarios (cada una dice quién la escribió) y se les pueden pegar fotos de los comprobantes. Claude las lee después para analizarlas y cuadrar juntas.
+          </p>
           <div className="mt-3 flex flex-col gap-1.5">
             {notas.map((n) => (
-              <div key={n.id} className={`flex flex-wrap items-center gap-2 border-b border-gray-100 pb-1.5 text-xs ${n.resolved ? "opacity-50" : ""}`}>
-                <span className="font-medium text-gray-600">{n.date.slice(8)}/{n.date.slice(5, 7)}</span>
-                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
-                  {api.stores.find((s) => s.code === n.storeCode)?.name ?? "Empresa"} · {n.channel}
-                </span>
-                <span className="flex-1 text-gray-700">{n.note}</span>
-                <button onClick={() => notaAccion(n.id, n.resolved ? "reopen" : "resolve")} className="font-medium text-plazet-700 hover:underline">
-                  {n.resolved ? "reabrir" : "✓ resuelta"}
-                </button>
-                <button onClick={() => notaAccion(n.id, "delete")} className="text-gray-400 hover:text-red-600">borrar</button>
+              <div key={n.id} className={`border-b border-gray-100 pb-1.5 text-xs ${n.resolved ? "opacity-50" : ""}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-gray-600">{n.date.slice(8)}/{n.date.slice(5, 7)}</span>
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
+                    {api.stores.find((s) => s.code === n.storeCode)?.name ?? "Empresa"} · {n.channel}
+                  </span>
+                  <span className="flex-1 text-gray-700">{n.note}</span>
+                  {n.autor && <span className="text-[10px] text-gray-400" title={n.autor}>— {autorCorto(n.autor)}</span>}
+                  <button
+                    onClick={() => { setAdjuntarA(n.id); inputFotos.current?.click(); }}
+                    disabled={subiendo}
+                    title="Pegar foto del comprobante"
+                    className="text-gray-500 hover:text-plazet-700 disabled:opacity-50"
+                  >
+                    📎 foto
+                  </button>
+                  <button onClick={() => notaAccion(n.id, n.resolved ? "reopen" : "resolve")} className="font-medium text-plazet-700 hover:underline">
+                    {n.resolved ? "reabrir" : "✓ resuelta"}
+                  </button>
+                  <button onClick={() => notaAccion(n.id, "delete")} className="text-gray-400 hover:text-red-600">borrar</button>
+                </div>
+                {n.adjuntos?.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-2 pl-8">
+                    {n.adjuntos.map((a) => (
+                      <div key={a.id} className="group relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/api/notas/adjunto/${a.id}`}
+                          alt={a.name}
+                          title={`${a.name} · ${Math.round(a.size / 1024)} KB — clic para ampliar`}
+                          onClick={() => setVerImg({ id: a.id, name: a.name })}
+                          className="h-16 w-16 cursor-zoom-in rounded-md border border-gray-200 object-cover hover:border-plazet-500"
+                        />
+                        <button
+                          onClick={() => { if (confirm("¿Borrar esta imagen?")) borrarAdjunto(a.id); }}
+                          title="Borrar imagen"
+                          className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow group-hover:flex"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -566,19 +637,49 @@ function QrDetalleModal({ date, store, storeLabel, onClose }: { date: string; st
 }
 
 /** Agregar una nota de revisión a un día (tienda + canal actuales) */
+/** Nota de revisión de un día (la ven todos los usuarios, con su autor y sus fotos) */
+interface Nota {
+  id: number;
+  date: string;
+  storeCode: string | null;
+  channel: string;
+  note: string;
+  autor: string | null;
+  resolved: boolean;
+  adjuntos: { id: number; name: string; mime: string; size: number }[];
+}
+
+/** "Paola Agreda" → "Paola Agreda"; "jero@plazet.co" → "jero" */
+function autorCorto(a: string): string {
+  return a.includes("@") ? a.split("@")[0] : a;
+}
+
 function NotaModal({ date, store, storeName, canal, onSaved, onClose }: { date: string; store: string; storeName: string; canal: Canal; onSaved: () => void; onClose: () => void }) {
   const [texto, setTexto] = useState("");
+  const [fotos, setFotos] = useState<File[]>([]);
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // previsualizaciones (se liberan al cambiar la lista)
+  const previews = useMemo(() => fotos.map((f) => URL.createObjectURL(f)), [fotos]);
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
+
   async function guardar() {
     if (!texto.trim() || guardando) return;
     setGuardando(true);
+    setError(null);
     const res = await fetch("/api/notas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date, storeCode: store, channel: canal === "todo" ? "otro" : canal, note: texto }),
     });
+    if (!res.ok) { setGuardando(false); setError("No se pudo guardar la nota."); return; }
+    const { nota } = (await res.json()) as { nota: { id: number } };
+    const errores: string[] = [];
+    for (const f of fotos) { const e = await subirAdjunto(nota.id, f); if (e) errores.push(e); }
     setGuardando(false);
-    if (res.ok) { onSaved(); onClose(); }
+    if (errores.length) { setError("La nota quedó guardada, pero: " + errores.join(" · ")); onSaved(); return; }
+    onSaved();
+    onClose();
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -592,11 +693,42 @@ function NotaModal({ date, store, storeName, canal, onSaved, onClose }: { date: 
           placeholder="Ej: la diferencia es un pago que la clienta hizo por Nequi / valor pendiente por confirmar con la asesora…"
           className="mt-3 w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-plazet-500 focus:outline-none"
         />
-        <p className="mt-1 text-[11px] text-gray-400">Queda guardada en la lista del mes para revisarla luego con Claude.</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <label className="cursor-pointer rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:border-plazet-500 hover:text-plazet-700">
+            📎 Pegar foto del comprobante
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => { const nuevos = Array.from(e.target.files ?? []); e.target.value = ""; if (nuevos.length) setFotos((f) => [...f, ...nuevos]); }}
+            />
+          </label>
+          {fotos.length > 0 && <span className="text-[11px] text-gray-400">{fotos.length} foto{fotos.length > 1 ? "s" : ""} (se comprimen al subir)</span>}
+        </div>
+        {fotos.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {fotos.map((f, i) => (
+              <div key={i} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={previews[i]} alt={f.name} title={f.name} className="h-16 w-16 rounded-md border border-gray-200 object-cover" />
+                <button
+                  onClick={() => setFotos((arr) => arr.filter((_, j) => j !== i))}
+                  title="Quitar"
+                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mt-1 text-[11px] text-gray-400">Queda guardada en la lista del mes, con tu nombre, para que la vean los demás y revisarla luego con Claude.</p>
+        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
         <div className="mt-3 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100">Cancelar</button>
           <button onClick={guardar} disabled={!texto.trim() || guardando} className="rounded-lg bg-plazet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-plazet-700 disabled:opacity-50">
-            {guardando ? "Guardando…" : "Guardar nota"}
+            {guardando ? (fotos.length ? "Guardando y subiendo fotos…" : "Guardando…") : "Guardar nota"}
           </button>
         </div>
       </div>

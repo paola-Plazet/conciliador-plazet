@@ -10,6 +10,7 @@ import { loadHolidays } from "@/lib/process";
 import { nextBusinessDay } from "@/lib/dates";
 import { STORES, storeName } from "@/lib/stores";
 import { CUENTAS_NO_QR, ALEGRA_CONFIABLE_HASTA } from "@/lib/alegra-api";
+import { QR_DIAS_ANTES } from "@/lib/qr-reglas";
 
 export const runtime = "nodejs";
 
@@ -117,8 +118,15 @@ export async function GET(request: NextRequest) {
   // ── QR por tienda (heurística temporal) ──────────────────────────────────
   // El banco no separa el QR por tienda. Se asigna cada pago QR del banco a la
   // tienda cuya venta QR (Karrot) tiene el MISMO valor exacto (fecha cercana).
-  const diaDif = (a: string, b: string) =>
-    Math.abs(Math.round((Date.parse(a + "T00:00:00Z") - Date.parse(b + "T00:00:00Z")) / 86400000));
+  // Regla (Paola, 07-sep): el pago QR entra al banco el MISMO día de la venta o
+  // a lo sumo un par de días ANTES (venta registrada tarde / web facturada a la
+  // mañana siguiente), NUNCA después de la fecha facturada. Antes se admitían
+  // ±6 días y un pago de 74.600 del 5-may se "comía" una venta de 74.450 del 8.
+  // Devuelve los días de rezago venta−pago (0..QR_DIAS_ANTES) o −1 si no aplica.
+  const distQr = (pagoDate: string, ventaDate: string): number => {
+    const d = Math.round((Date.parse(ventaDate + "T00:00:00Z") - Date.parse(pagoDate + "T00:00:00Z")) / 86400000);
+    return d >= 0 && d <= QR_DIAS_ANTES ? d : -1;
+  };
   const qrSalesList = salesRows
     .filter((s) => s.method === "TRANSFERENCIA" && s.storeCode && inMonth(s.date) && !otraPlat.has(s.id))
     .map((s) => ({ date: s.date, store: s.storeCode as string, amount: Math.round(s.amount), used: false }));
@@ -158,8 +166,8 @@ export async function GET(request: NextRequest) {
     let mejorDist = 99;
     for (const v of qrSalesList) {
       if (v.used || v.store !== a.storeCode || Math.abs(v.amount - monto) > 500) continue;
-      const dd = diaDif(v.date, a.date);
-      if (dd <= 6 && dd < mejorDist) { mejorVenta = v; mejorDist = dd; }
+      const dd = distQr(a.date, v.date);
+      if (dd >= 0 && dd < mejorDist) { mejorVenta = v; mejorDist = dd; }
     }
     pago.used = true;
     add(qrBancoTienda, a.storeCode, monto);
@@ -179,8 +187,8 @@ export async function GET(request: NextRequest) {
       let best = -1, bestD = 99;
       pagos.forEach((p, i) => {
         if (p.used) return;
-        const dd = diaDif(p.date, v.date);
-        if (dd <= 6 && dd < bestD) { best = i; bestD = dd; }
+        const dd = distQr(p.date, v.date);
+        if (dd >= 0 && dd < bestD) { best = i; bestD = dd; }
       });
       if (best >= 0) {
         pagos[best].used = true;
@@ -201,10 +209,10 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => a.ref.date.localeCompare(b.ref.date));
   for (const { ref, amount } of pagosLibres) {
     const cands = qrSalesList.filter(
-      (v) => !v.used && Math.abs(v.amount - amount) <= 500 && diaDif(v.date, ref.date) <= 6,
+      (v) => !v.used && Math.abs(v.amount - amount) <= 500 && distQr(ref.date, v.date) >= 0,
     );
     if (cands.length === 0) continue; // pago sin venta que cruce → queda a nivel empresa
-    const clave = (c: (typeof cands)[number]) => diaDif(c.date, ref.date) * 1000 + Math.abs(c.amount - amount);
+    const clave = (c: (typeof cands)[number]) => distQr(ref.date, c.date) * 1000 + Math.abs(c.amount - amount);
     let best = cands[0];
     for (const c of cands) if (clave(c) < clave(best)) best = c;
     const empatadas = cands.filter((c) => clave(c) === clave(best));

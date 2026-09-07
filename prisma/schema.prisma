@@ -161,8 +161,24 @@ model DayNote {
   autor     String?
   resolved  Boolean  @default(false)
   createdAt DateTime @default(now())
+  adjuntos  NoteAttachment[]
 
   @@index([date])
+}
+
+/// Imagen (foto del comprobante) pegada a una nota de revisión. Se guarda en
+/// la misma BD (volumen bajo, comprimida en el navegador a ≤1600px JPEG).
+model NoteAttachment {
+  id        Int      @id @default(autoincrement())
+  noteId    Int
+  note      DayNote  @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  name      String
+  mime      String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([noteId])
 }
 
 /// Pago recibido según ALEGRA, con su CUENTA destino (QR Bancolombia,

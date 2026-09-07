@@ -3,6 +3,35 @@
 Última sesión: 27-ago-2026. Retomar con:
 **"retomemos el conciliador, lee docs/estado-app-tablero.md"**
 
+## 07-sep-2026 — regla de fecha QR + notas compartidas con fotos de comprobantes
+
+**Regla QR (Paola):** un pago QR del banco NUNCA es posterior a la fecha facturada; puede ser del mismo
+día o hasta `QR_DIAS_ANTES = 2` días antes (`src/lib/qr-reglas.ts`, usada por `/api/dashboard` y `/api/qr-dia`).
+Antes el cruce admitía ±6 días en ambas direcciones y un pago de $74.600 del 5-may se "comía" la venta
+de $74.450 de Plaza del 8-may (la dif del día salía 82.450 en vez de 82.600 + 74.450 = 157.050).
+Verificado con la ruta real (`scripts/dash-qr-meses.ts`): jun/jul/ago/sep quedaron IGUAL; mayo B1 pasa a
+$1.251.400 (9 días) y B2 $1.363.288 — el hueco viejo de mayo, 26 ventas QR sin pago (ver abajo).
+Por revisar queda solo el $35.650 del 7-may (Plaza/Unioccidente); el $35.500 del 8-may ya no se ofrece
+como candidato del 35.650 del 7 (sería un pago posterior) y queda "sin asignar" a nivel empresa.
+
+**Reclasificación por Alegra en mayo = 0** (`scripts/qr-mayo-alegra.ts`, `alegra-rappi-mayo.ts`): los 8
+pagos Rappi/Addi de mayo en Alegra corresponden a ventas que Karrot YA trae como método OTRO/Rappi, no
+como QR → los 26 QR de mayo sin pago ($2,54M: B1 11 · B2 15) son reales, no un error de método.
+
+**Notas de revisión:** ya eran compartidas (todos los usuarios ven las del mes); ahora cada nota muestra
+su autor (nombre de la sesión SSO) y acepta **fotos de comprobantes**: tabla `NoteAttachment`
+(bytes en la misma BD Neon; el navegador comprime a ≤1600px JPEG en `src/lib/imagen-cliente.ts`),
+`POST/DELETE /api/notas/adjunto`, `GET /api/notas/adjunto/[id]` (sesión vía proxy). En /tiendas: el modal
+de nota tiene "📎 Pegar foto", y en la lista del mes cada nota tiene "📎 foto", miniaturas clicables
+(lightbox) y ✕ para borrar. Crear notas/adjuntar exige rol EDITOR+ en Conciliaciones → verificar que
+Jerónimo tenga EDITOR (campo `rolConciliador` del usuario en la nómina, /usuarios del portal).
+
+Cortes de datos ese día: ventas 6-sep · QR banco 6-sep · MP 7-sep · datáfono 3-sep · Alianza 7-sep ·
+Alegra 7-sep · Shopify 6-sep. Notas en BD: 0. Asignaciones manuales QR: 0 (Paola aún no resuelve el 35.650).
+
+Lo demás del 07-sep (Alegra por API, MP por API, asignación manual QR, detalle QR por día, ZIP en el
+cargador, Amex en datáfono, Karrot MCP) está en la memoria de Claude `conciliador-plazet.md`.
+
 ## 04-sep-2026 — NUEVO canal "Ventas web": Shopify (Plazet + NL) vs Mercado Pago
 - Página **/web** (sidebar "Ventas web", VIEWER+): pedidos de las tiendas online de Plazet y Natural Light
   cruzados contra los cobros de la cuenta de Mercado Pago (una sola cuenta para las dos, la ya cargada por archivo).
