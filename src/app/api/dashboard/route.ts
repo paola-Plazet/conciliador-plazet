@@ -228,6 +228,32 @@ export async function GET(request: NextRequest) {
     qrAsignado += amount;
   }
 
+  // PASE 3 — una factura pagada con DOS QR del mismo cliente (caso real: Michel
+  // Castro 47.100 + 35.500 = 82.600 en Plaza el 8-may, verificado por Jerónimo):
+  // par de pagos libres del MISMO pagador, dentro de la ventana, cuya suma calza
+  // ±$500 con una venta que quedó sin pago.
+  for (const v of qrSalesList) {
+    if (v.used) continue;
+    const libres = [...bankByAmount].flatMap(([amount, arr]) =>
+      arr.filter((p) => !p.used && distQr(p.date, v.date) >= 0).map((p) => ({ p, amount })),
+    );
+    let par: [(typeof libres)[number], (typeof libres)[number]] | null = null;
+    for (let i = 0; i < libres.length && !par; i++) {
+      for (let j = i + 1; j < libres.length; j++) {
+        const a = libres[i], b = libres[j];
+        if (a.p.payer === b.p.payer && Math.abs(a.amount + b.amount - v.amount) <= 500) { par = [a, b]; break; }
+      }
+    }
+    if (!par) continue;
+    for (const x of par) {
+      x.p.used = true;
+      add(qrBancoTienda, v.store, x.amount);
+      add(qrBancoDia, `${v.store}|${v.date}`, x.amount);
+      qrAsignado += x.amount;
+    }
+    v.used = true;
+  }
+
   // resultados EFECTIVO del mes → mapear al último día de venta que cubren.
   // Se incluye cualquier resultado cuyo depósito CUBRA días del mes visible,
   // aunque el depósito cierre en otro mes (efectivo de fin de mes que se

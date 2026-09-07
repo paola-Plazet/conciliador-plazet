@@ -18,6 +18,28 @@ como candidato del 35.650 del 7 (sería un pago posterior) y queda "sin asignar"
 pagos Rappi/Addi de mayo en Alegra corresponden a ventas que Karrot YA trae como método OTRO/Rappi, no
 como QR → los 26 QR de mayo sin pago ($2,54M: B1 11 · B2 15) son reales, no un error de método.
 
+**CRUCE CON LA LIQUIDACIÓN DE RAPPI (noche del 07-sep)**: Jerónimo dejó notas (tabla DayNote) diciendo
+que varias ventas QR de Plaza en mayo fueron Rappi. Paola bajó `Downloads/report.xlsx` = liquidación
+Rappi 23661380 (4–10 may, **cuenta de COMERCIALIZADORA NATURAL LIGHT** — la plata de Rappi de las
+tiendas Plazet entra a NL, no a Habbie; hoja "1. Ventas por Orden": STORE ID 900170757 = Plaza,
+"Plazet, Unicentro Occidente" = B2). Cruce (`scripts/rappi-report.ts`, `rappi-cruce-mayo.ts`):
+SÍ existen en Rappi y estaban como QR → **reclasificadas a Rappi** (`scripts/reclasificar-rappi-mayo.ts`):
+B1 7-may fac 527 $20.600 y fac 545 $35.650, 8-may fac 727 $74.450, 9-may fac 791 $20.750; B2 7-may
+fac 502 $107.250 y fac 505 $69.650, 9-may fac 801 $37.950. NO existe en Rappi: B1 9-may $85.800 (Jero
+dice Rappi; queda pendiente). B1 11-may $239.750 = Addi (fuera de este archivo). B1 8-may $82.600 = DOS
+QR de MICHEL CASTRO (47.100 + 35.500, ambos en el banco el 8-may) → nuevo PASE 3 del cruce QR (pares
+del mismo pagador). Mayo pasa de 26 a 18 QR sin pago ($2,18M) y el empate 35.650 del 7-may se resolvió
+solo (el de Plaza era Rappi → el del banco es de Unioccidente). Órdenes Rappi de Plazet SIN venta en el
+POS: B1 4-may $20.600, 5-may $102.300, 9-may $91.950 (cash); B2 7-may $18.150 (¿la de $18.500 QR?).
+
+**RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
+Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
+REAPLICA tras cada recarga de ventas (`aplicarOverrides()` al final de la ingesta en ledger.ts), así
+sobrevive. API `/api/venta-plataforma` (GET ?month · POST {date, store, invoice, amount, plataforma,
+nota?} · DELETE {id} = deshacer, restaura método/bodega originales). UI: en el detalle QR del día, cada
+factura sin pago tiene botones "fue Rappi" / "fue Addi" (EDITOR+) y abajo la lista de reclasificadas
+con "deshacer".
+
 **Notas de revisión:** ya eran compartidas (todos los usuarios ven las del mes); ahora cada nota muestra
 su autor (nombre de la sesión SSO) y acepta **fotos de comprobantes**: tabla `NoteAttachment`
 (bytes en la misma BD Neon; el navegador comprime a ≤1600px JPEG en `src/lib/imagen-cliente.ts`),

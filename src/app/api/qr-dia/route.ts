@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   // regla: el pago QR entra el mismo día o hasta QR_DIAS_ANTES antes, nunca después de la factura
   const desde = new Date(Date.parse(date) - QR_DIAS_ANTES * 86400000).toISOString().slice(0, 10);
   const hasta = date;
-  const [facturas, pagos, stores, alegra] = await Promise.all([
+  const [facturas, pagos, stores, alegra, reclasificadas] = await Promise.all([
     prisma.sale.findMany({
       where: { method: "TRANSFERENCIA", date, source: { not: "karrot_devolucion" }, ...(store ? { storeCode: store } : {}) },
       orderBy: [{ storeCode: "asc" }, { amount: "desc" }],
@@ -30,6 +30,8 @@ export async function GET(req: NextRequest) {
     date <= ALEGRA_CONFIABLE_HASTA
       ? prisma.alegraPago.findMany({ where: { date, metodo: "transfer" } })
       : Promise.resolve([]),
+    // facturas de ese día que alguien marcó a mano como Rappi/Addi (ya no cuentan como QR)
+    prisma.saleOverride.findMany({ where: { date, ...(store ? { storeCode: store } : {}) }, orderBy: { id: "asc" } }),
   ]);
   const nombre = new Map(stores.map((s) => [s.code, s.name]));
   // cuenta destino según Alegra, por valor (multiconjunto: se consume una vez)
@@ -53,6 +55,21 @@ export async function GET(req: NextRequest) {
       if (score < bestScore) { bestScore = score; best = p; }
     }
     if (best) usados.add(best.id);
+    // sin pago único: ¿DOS pagos del mismo cliente que sumen la factura? (ej. Michel Castro 47.100 + 35.500)
+    let par: { date: string; amount: number; payer: string } | null = null;
+    if (!best) {
+      const libres = pagos.filter((p) => !usados.has(p.id));
+      for (let i = 0; i < libres.length && !par; i++) {
+        for (let j = i + 1; j < libres.length; j++) {
+          const a = libres[i], b = libres[j];
+          if (a.payer === b.payer && Math.abs(a.amount + b.amount - f.amount) <= 500) {
+            usados.add(a.id); usados.add(b.id);
+            par = { date: a.date, amount: a.amount + b.amount, payer: `${a.payer} (2 pagos: ${Math.round(a.amount).toLocaleString("es-CO")} + ${Math.round(b.amount).toLocaleString("es-CO")})` };
+            break;
+          }
+        }
+      }
+    }
     const cuentas = cuentaPorValor.get(Math.round(f.amount));
     const cuentaAlegra = cuentas?.shift() ?? null; // consume una por factura
     return {
@@ -61,7 +78,7 @@ export async function GET(req: NextRequest) {
       storeName: f.storeCode ? (nombre.get(f.storeCode) ?? f.storeCode) : "Sin tienda",
       amount: f.amount,
       cuentaAlegra,
-      pago: best ? { date: best.date, amount: best.amount, payer: best.payer } : null,
+      pago: best ? { date: best.date, amount: best.amount, payer: best.payer } : par,
     };
   });
 
@@ -69,5 +86,9 @@ export async function GET(req: NextRequest) {
     date,
     facturas: out,
     pagosDelDia: pagos.filter((p) => p.date === date).map((p) => ({ amount: p.amount, payer: p.payer })),
+    reclasificadas: reclasificadas.map((r) => ({
+      id: r.id, invoice: r.invoice, store: r.storeCode, storeName: nombre.get(r.storeCode) ?? r.storeCode,
+      amount: r.amount, plataforma: r.plataforma, nota: r.nota, autor: r.autor,
+    })),
   });
 }

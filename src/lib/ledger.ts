@@ -18,6 +18,7 @@ import { parseLinux } from "./parsers/linux";
 import { parseKarrot, KARROT_CUTOVER } from "./parsers/karrot";
 import { parseKarrotVentas } from "./parsers/karrot-ventas";
 import { parseKarrotPagos } from "./parsers/karrot-pagos";
+import { aplicarOverrides } from "./overrides";
 import AdmZip from "adm-zip";
 import { detectFileType, type FileKind } from "./parsers/detect";
 import { conciliar, type ConciliationSummary } from "./engine";
@@ -255,6 +256,12 @@ export async function ingestFiles(
             })
             .then(() => {}),
       });
+      // las reclasificaciones manuales ("fue Rappi, no QR") se reaplican sobre
+      // las filas recién creadas para que sobrevivan a la recarga
+      if (res.from && res.to) {
+        const n = await aplicarOverrides();
+        if (n > 0) warnings.push(`${n} venta(s) reclasificada(s) a mano (Rappi/Addi…) reaplicada(s) tras la recarga.`);
+      }
     } else if (kind === "banco") {
       const refMap = await loadRefMap();
       const parsed = parseBanco(f.buffer, refMap);

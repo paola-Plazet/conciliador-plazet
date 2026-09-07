@@ -173,6 +173,27 @@ model DayNote {
   @@index([date])
 }
 
+/// Reclasificación MANUAL de una venta: el POS la registró como QR (u otro
+/// método) pero en realidad entró por una plataforma (Rappi / Addi...). Se
+/// aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>")
+/// y se vuelve a aplicar tras cada recarga de ventas, así sobrevive.
+model SaleOverride {
+  id              Int      @id @default(autoincrement())
+  date            String
+  storeCode       String
+  invoice         String
+  amount          Float
+  plataforma      String // Rappi | Addi | Mercadopago | Nequi | Bono Regalo
+  metodoOriginal  String
+  bodegaOriginal  String
+  nota            String?
+  autor           String?
+  createdAt       DateTime @default(now())
+
+  @@unique([date, storeCode, invoice, amount])
+  @@index([date])
+}
+
 /// Nota crédito de Karrot (conector MCP, reporte CUSTOMER_CREDIT_NOTES).
 model CreditNote {
   id           Int    @id @default(autoincrement())

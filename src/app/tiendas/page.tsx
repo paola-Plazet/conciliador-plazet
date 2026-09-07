@@ -549,7 +549,7 @@ export default function TiendasPage() {
         );
       })()}
 
-      {qrDia && <QrDetalleModal date={qrDia.date} store={qrDia.store} storeLabel={qrDia.label} onClose={() => setQrDia(null)} />}
+      {qrDia && <QrDetalleModal date={qrDia.date} store={qrDia.store} storeLabel={qrDia.label} puedeGestionar={puedeGestionar} onCambio={() => setRefresh((x) => x + 1)} onClose={() => setQrDia(null)} />}
       {tarDia && <DatafonoDetalleModal date={tarDia.date} store={tarDia.store} storeLabel={tarDia.label} onClose={() => setTarDia(null)} />}
       {/* selector oculto: "📎 foto" en una nota de la lista lo dispara */}
       <input
@@ -641,16 +641,38 @@ export default function TiendasPage() {
 
 /** Detalle QR de un día: facturas (de una tienda, o de todas si se abre desde
  * el listado de empresa) vs los pagos TOTALES que entraron al banco ese día */
-function QrDetalleModal({ date, store, storeLabel, onClose }: { date: string; store?: string; storeLabel?: string; onClose: () => void }) {
+function QrDetalleModal({ date, store, storeLabel, puedeGestionar, onCambio, onClose }: { date: string; store?: string; storeLabel?: string; puedeGestionar: boolean; onCambio: () => void; onClose: () => void }) {
   interface Det {
     facturas: { invoice: string; store: string; storeName: string; amount: number; cuentaAlegra: string | null; pago: { date: string; amount: number; payer: string } | null }[];
     pagosDelDia: { amount: number; payer: string }[];
+    reclasificadas: { id: number; invoice: string; store: string; storeName: string; amount: number; plataforma: string; nota: string | null; autor: string | null }[];
   }
   const [det, setDet] = useState<Det | null>(null);
-  useEffect(() => {
-    setDet(null);
-    fetch(`/api/qr-dia?date=${date}${store ? `&store=${store}` : ""}`).then((r) => r.json()).then(setDet);
+  const [ocupado, setOcupado] = useState(false);
+  const cargar = () => fetch(`/api/qr-dia?date=${date}${store ? `&store=${store}` : ""}`).then((r) => r.json()).then(setDet);
+  useEffect(() => { setDet(null); cargar(); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, store]);
+  /** "esta factura no fue QR, fue Rappi/Addi": la saca del canal QR y la manda a su plataforma */
+  async function marcar(f: Det["facturas"][number], plataforma: string) {
+    if (ocupado) return;
+    setOcupado(true);
+    const res = await fetch("/api/venta-plataforma", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, store: f.store, invoice: f.invoice, amount: f.amount, plataforma }),
+    });
+    setOcupado(false);
+    if (!res.ok) { const j = (await res.json().catch(() => ({}))) as { error?: string }; alert(j.error ?? "No se pudo reclasificar."); return; }
+    await cargar();
+    onCambio();
+  }
+  async function deshacer(id: number) {
+    if (ocupado || !confirm("¿Volver a dejar esta factura como QR?")) return;
+    setOcupado(true);
+    const res = await fetch("/api/venta-plataforma", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    setOcupado(false);
+    if (res.ok) { await cargar(); onCambio(); }
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -697,11 +719,46 @@ function QrDetalleModal({ date, store, storeLabel, onClose }: { date: string; st
                       ) : (
                         <span className="font-medium text-red-600">✗ sin pago que calce</span>
                       )}
+                      {!f.pago && puedeGestionar && (
+                        <span className="ml-2 inline-flex gap-1 align-middle">
+                          {["Rappi", "Addi"].map((p) => (
+                            <button
+                              key={p}
+                              disabled={ocupado}
+                              onClick={() => marcar(f, p)}
+                              title={`Marcar que esta factura no fue QR sino ${p} (se saca del canal QR)`}
+                              className="rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-600 hover:border-plazet-500 hover:text-plazet-700 disabled:opacity-50"
+                            >
+                              fue {p}
+                            </button>
+                          ))}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {det.reclasificadas.length > 0 && (
+              <>
+                <h4 className="mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                  Facturas de este día marcadas como Rappi / Addi (ya no cuentan como QR)
+                </h4>
+                <div className="mt-2 flex flex-col gap-1">
+                  {det.reclasificadas.map((r) => (
+                    <div key={r.id} className="flex flex-wrap items-center gap-2 border-b border-gray-100 py-1 text-xs text-gray-600">
+                      {!store && <span className="text-gray-500">{r.storeName}</span>}
+                      <span className="font-medium text-gray-700">{r.invoice}</span>
+                      <span>{cop(r.amount)}</span>
+                      <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">→ {r.plataforma}</span>
+                      {r.nota && <span className="text-gray-400">{r.nota}</span>}
+                      {r.autor && <span className="text-[10px] text-gray-400">— {autorCorto(r.autor)}</span>}
+                      {puedeGestionar && <button onClick={() => deshacer(r.id)} disabled={ocupado} className="text-gray-400 hover:text-red-600 disabled:opacity-50">deshacer</button>}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
             <h4 className="mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-500">
               Todos los pagos QR que entraron al banco ese día (toda la empresa)
             </h4>
