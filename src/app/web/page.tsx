@@ -90,7 +90,16 @@ export default function WebPage() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "Error al sincronizar.");
       const parts = (d.shops as { label: string; orders: number }[]).map((s) => `${s.label}: ${s.orders} pedidos`);
-      setMsg(`Sincronizado · ${parts.join(" · ")}${d.errors?.length ? ` · ⚠ ${d.errors.join(" · ")}` : ""}`);
+      // luego los cobros de Mercado Pago por API
+      let mpMsg = "";
+      try {
+        const r2 = await fetch("/api/mercadopago/sync", { method: "POST" });
+        const d2 = await r2.json();
+        mpMsg = r2.ok ? ` · Mercado Pago: ${d2.ops} cobros` : ` · ⚠ MP: ${d2.error ?? "error"}`;
+      } catch {
+        mpMsg = " · ⚠ MP: sin conexión";
+      }
+      setMsg(`Sincronizado · ${parts.join(" · ")}${mpMsg}${d.errors?.length ? ` · ⚠ ${d.errors.join(" · ")}` : ""}`);
       load(month || undefined);
     } catch (e) {
       setMsg(`⚠ ${e instanceof Error ? e.message : "Error al sincronizar."}`);
@@ -132,7 +141,7 @@ export default function WebPage() {
             className="flex items-center gap-2 rounded-lg bg-plazet-600 px-4 py-2 text-sm font-medium text-white hover:bg-plazet-700 disabled:opacity-60"
           >
             <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
-            {syncing ? "Sincronizando…" : "Sincronizar Shopify"}
+            {syncing ? "Sincronizando…" : "Sincronizar (Shopify + MP)"}
           </button>
         </div>
       </div>
