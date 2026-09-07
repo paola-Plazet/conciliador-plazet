@@ -26,8 +26,26 @@ de nota tiene "📎 Pegar foto", y en la lista del mes cada nota tiene "📎 fot
 (lightbox) y ✕ para borrar. Crear notas/adjuntar exige rol EDITOR+ en Conciliaciones → verificar que
 Jerónimo tenga EDITOR (campo `rolConciliador` del usuario en la nómina, /usuarios del portal).
 
-Cortes de datos ese día: ventas 6-sep · QR banco 6-sep · MP 7-sep · datáfono 3-sep · Alianza 7-sep ·
+Cortes de datos ese día: ventas 7-sep (parcial) · QR banco 6-sep · MP 7-sep · datáfono 3-sep · Alianza 7-sep ·
 Alegra 7-sep · Shopify 6-sep. Notas en BD: 0. Asignaciones manuales QR: 0 (Paola aún no resuelve el 35.650).
+
+**Jerónimo (rol VIEWER) puede crear notas y pegarles fotos, nada más** (Paola): el proxy deja pasar
+`POST /api/notas*` al rol de solo lectura; resolver/reabrir/borrar notas e imágenes sigue EDITOR+ y la
+página oculta esos botones al VIEWER (`/api/me`).
+
+**NUEVO formato de ventas Karrot — `karrot_pagos`** (`src/lib/parsers/karrot-pagos.ts`): el allsales
+nuevo trae UNA FILA POR PAGO ("Nombre/Valor Método de Pago", "Cancelado", "TipoCuenta" CR/DB,
+"Franquicia"). Emite una venta por (factura, método) → las facturas con **pago mixto** (75 entre jul y
+sep; ej. 7949 del 2-sep en Unioccidente = $50.000 efectivo + $100.000 QR) ya no caen enteras en el
+método principal; descarta anuladas (27) y separa crédito/débito. Detección: "# Factura" + "Valor
+Método de Pago". Cargado el 07-sep (`scripts/cargar-archivo.ts`, 8.702 ventas 8-jul→7-sep): agosto pasó
+de 37 diferencias a 15 (datáfono 11→4, efectivo 18→6, QR 8→5); sep 5→3; julio igual (5). Este es el
+reporte que Paola debe bajar de Karrot de ahora en adelante (los formatos viejos siguen soportados).
+
+**BUG corregido en la ingesta** (venía del "cargador acepta ZIP" de la noche anterior, a15f670): un
+.xlsx también empieza por "PK" y `expandZips` lo descomponía en sus XML internos → cualquier Excel
+subido desde ese deploy se ignoraba en silencio ("tipo de archivo no reconocido"). Ahora solo se
+descomprime lo que tenga extensión .zip o firma PK sin ser Office (`[Content_Types].xml`/`xl/`).
 
 Lo demás del 07-sep (Alegra por API, MP por API, asignación manual QR, detalle QR por día, ZIP en el
 cargador, Amex en datáfono, Karrot MCP) está en la memoria de Claude `conciliador-plazet.md`.

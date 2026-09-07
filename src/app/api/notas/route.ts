@@ -17,13 +17,11 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ notas });
 }
 
-/** Crea una nota. Body: { date, storeCode?, channel, note } */
+/** Crea una nota. Body: { date, storeCode?, channel, note }.
+ * Cualquier usuario con sesión puede crear notas (también el de solo lectura). */
 export async function POST(req: NextRequest) {
   const sesion = await validarSesion(req.cookies.get(SESSION_COOKIE)?.value);
   if (!sesion) return NextResponse.json({ error: "Sesión requerida." }, { status: 401 });
-  if (NIVEL[sesion.rol] < NIVEL.EDITOR) {
-    return NextResponse.json({ error: "Tu rol no permite crear notas." }, { status: 403 });
-  }
   const body = (await req.json()) as { date?: string; storeCode?: string; channel?: string; note?: string };
   if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) || !body.note?.trim()) {
     return NextResponse.json({ error: "Faltan datos (date, note)." }, { status: 400 });

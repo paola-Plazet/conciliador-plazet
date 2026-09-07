@@ -7,6 +7,7 @@ export type FileKind =
   | "alegra_trans"
   | "karrot"
   | "karrot_ventas"
+  | "karrot_pagos"
   | "banco"
   | "datafono"
   | "datafono_banco"
@@ -50,6 +51,12 @@ export function detectFileType(filename: string, buffer: Buffer): DetectionResul
     }
     if (sample.includes("MERCADO PAGO") && sample.includes("VALOR DE LA COMPRA")) {
       return { kind: "mercadopago", reason: "Reporte de liquidaciones Mercado Pago (settlement)" };
+    }
+    if (
+      sample.includes("# FACTURA") &&
+      (sample.includes("VALOR MÉTODO DE PAGO") || sample.includes("VALOR METODO DE PAGO"))
+    ) {
+      return { kind: "karrot_pagos", reason: "Reporte de ventas Karrot (allsales XLSX, una fila por pago)" };
     }
     if (
       sample.includes("# FACTURA") &&

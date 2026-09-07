@@ -26,6 +26,7 @@ const ORDEN: Record<string, number> = {
   alegra_trans: 4,
   karrot: 8,
   karrot_ventas: 9, // el reporte_ventas manda sobre el allsales (pagos mixtos)
+  karrot_pagos: 10, // allsales nuevo (una fila por pago): el definitivo desde sep-2026
 };
 
 /** Descomprime un .zip a una carpeta temporal y devuelve los archivos internos */

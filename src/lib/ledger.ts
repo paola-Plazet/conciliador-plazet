@@ -17,6 +17,7 @@ import { parseMercadopago } from "./parsers/mercadopago";
 import { parseLinux } from "./parsers/linux";
 import { parseKarrot, KARROT_CUTOVER } from "./parsers/karrot";
 import { parseKarrotVentas } from "./parsers/karrot-ventas";
+import { parseKarrotPagos } from "./parsers/karrot-pagos";
 import AdmZip from "adm-zip";
 import { detectFileType, type FileKind } from "./parsers/detect";
 import { conciliar, type ConciliationSummary } from "./engine";
@@ -139,17 +140,26 @@ export function expandZips(files: { filename: string; buffer: Buffer }[]): {
   const out: { filename: string; buffer: Buffer }[] = [];
   const warnings: string[] = [];
   for (const f of files) {
+    const nombre = f.filename.toLowerCase();
+    // OJO: un .xlsx/.docx TAMBIÉN empieza por "PK" (es un zip por dentro). Solo
+    // se descomprime lo que sea un ZIP de verdad: extensión .zip, o firma PK sin
+    // extensión de Office y sin el "[Content_Types].xml" que traen esos formatos.
+    const esOffice = /\.(xlsx|xlsm|xlsb|docx|pptx)$/.test(nombre);
     const esZip =
-      f.filename.toLowerCase().endsWith(".zip") ||
-      (f.buffer.length > 3 && f.buffer[0] === 0x50 && f.buffer[1] === 0x4b && f.buffer[2] <= 0x08);
+      nombre.endsWith(".zip") ||
+      (!esOffice && f.buffer.length > 3 && f.buffer[0] === 0x50 && f.buffer[1] === 0x4b && f.buffer[2] <= 0x08);
     if (!esZip) {
       out.push(f);
       continue;
     }
     try {
       const zip = new AdmZip(f.buffer);
-      const entries = zip
-        .getEntries()
+      const todas = zip.getEntries();
+      if (todas.some((e) => e.entryName === "[Content_Types].xml" || e.entryName.startsWith("xl/"))) {
+        out.push(f); // era un Excel con otra extensión, no un ZIP
+        continue;
+      }
+      const entries = todas
         .filter((e) => !e.isDirectory && !e.entryName.includes("__MACOSX") && !e.entryName.split("/").pop()!.startsWith("."));
       if (entries.length === 0) {
         warnings.push(`${f.filename}: el ZIP está vacío.`);
@@ -178,16 +188,18 @@ export async function ingestFiles(
     const { kind } = detectFileType(f.filename, f.buffer);
     let res = { from: null as string | null, to: null as string | null, inserted: 0, skipped: 0 };
 
-    const esKarrot = kind === "karrot" || kind === "karrot_ventas";
+    const esKarrot = kind === "karrot" || kind === "karrot_ventas" || kind === "karrot_pagos";
     if (kind === "alegra" || kind === "alegra_trans" || esKarrot) {
       const parsed =
-        kind === "karrot_ventas"
-          ? parseKarrotVentas(f.buffer)
-          : kind === "karrot"
-            ? parseKarrot(f.buffer)
-            : kind === "alegra_trans"
-              ? parseAlegraTrans(f.buffer)
-              : parseAlegra(f.buffer);
+        kind === "karrot_pagos"
+          ? parseKarrotPagos(f.buffer)
+          : kind === "karrot_ventas"
+            ? parseKarrotVentas(f.buffer)
+            : kind === "karrot"
+              ? parseKarrot(f.buffer)
+              : kind === "alegra_trans"
+                ? parseAlegraTrans(f.buffer)
+                : parseAlegra(f.buffer);
       warnings.push(...parsed.warnings);
       // Desde el corte a Karrot (8-jul-2026) la fuente de ventas es Karrot:
       // las filas de Alegra de esas fechas se descartan para no duplicar.

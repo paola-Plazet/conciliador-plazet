@@ -98,6 +98,12 @@ export default function TiendasPage() {
   const [adjuntarA, setAdjuntarA] = useState<number | null>(null); // nota a la que se le pegan fotos
   const [subiendo, setSubiendo] = useState(false);
   const inputFotos = useRef<HTMLInputElement>(null);
+  // rol en Conciliaciones: el de solo lectura puede crear notas y pegar fotos, nada más
+  const [rol, setRol] = useState<string>("ADMIN");
+  useEffect(() => {
+    fetch("/api/me").then((r) => (r.ok ? r.json() : null)).then((d) => d?.rol && setRol(d.rol)).catch(() => {});
+  }, []);
+  const puedeGestionar = rol !== "VIEWER";
 
   /** pega las fotos elegidas a una nota existente (desde la lista del mes) */
   async function pegarFotos(noteId: number, files: FileList | null) {
@@ -514,10 +520,14 @@ export default function TiendasPage() {
                   >
                     📎 foto
                   </button>
-                  <button onClick={() => notaAccion(n.id, n.resolved ? "reopen" : "resolve")} className="font-medium text-plazet-700 hover:underline">
-                    {n.resolved ? "reabrir" : "✓ resuelta"}
-                  </button>
-                  <button onClick={() => notaAccion(n.id, "delete")} className="text-gray-400 hover:text-red-600">borrar</button>
+                  {puedeGestionar && (
+                    <>
+                      <button onClick={() => notaAccion(n.id, n.resolved ? "reopen" : "resolve")} className="font-medium text-plazet-700 hover:underline">
+                        {n.resolved ? "reabrir" : "✓ resuelta"}
+                      </button>
+                      <button onClick={() => notaAccion(n.id, "delete")} className="text-gray-400 hover:text-red-600">borrar</button>
+                    </>
+                  )}
                 </div>
                 {n.adjuntos?.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-2 pl-8">
@@ -531,13 +541,15 @@ export default function TiendasPage() {
                           onClick={() => setVerImg({ id: a.id, name: a.name })}
                           className="h-16 w-16 cursor-zoom-in rounded-md border border-gray-200 object-cover hover:border-plazet-500"
                         />
-                        <button
-                          onClick={() => { if (confirm("¿Borrar esta imagen?")) borrarAdjunto(a.id); }}
-                          title="Borrar imagen"
-                          className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow group-hover:flex"
-                        >
-                          ✕
-                        </button>
+                        {puedeGestionar && (
+                          <button
+                            onClick={() => { if (confirm("¿Borrar esta imagen?")) borrarAdjunto(a.id); }}
+                            title="Borrar imagen"
+                            className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow group-hover:flex"
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>

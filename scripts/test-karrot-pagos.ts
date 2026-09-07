@@ -1,0 +1,15 @@
+import fs from "node:fs";
+import { detectFileType } from "../src/lib/parsers/detect";
+import { parseKarrotPagos } from "../src/lib/parsers/karrot-pagos";
+const f = process.argv[2];
+const buf = fs.readFileSync(f);
+console.log("DETECT:", JSON.stringify(detectFileType(f, buf)));
+const r = parseKarrotPagos(buf);
+const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-CO");
+console.log("ventas", r.sales.length, "facturas", r.totalInvoices, "total", fmt(r.totalAmount));
+console.log("byMethod", JSON.stringify(Object.fromEntries(Object.entries(r.byMethod).map(([k, v]) => [k, Math.round(v)]))));
+console.log("warnings", r.warnings);
+console.log("7949:", JSON.stringify(r.sales.filter((s) => s.invoice === "7949")));
+const dates = r.sales.map((s) => s.date).sort(); console.log("rango", dates[0], dates[dates.length - 1]);
+const sinTienda: Record<string, number> = {}; for (const s of r.sales) if (!s.storeCode) sinTienda[s.bodega] = (sinTienda[s.bodega] ?? 0) + 1; console.log("sin tienda:", JSON.stringify(sinTienda));
+const otros: Record<string, number> = {}; for (const s of r.sales) if (s.method === "OTRO") otros[s.bodega.split(" · ")[1] ?? "?"] = (otros[s.bodega.split(" · ")[1] ?? "?"] ?? 0) + 1; console.log("OTRO por plataforma:", JSON.stringify(otros));

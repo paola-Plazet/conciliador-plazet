@@ -8,13 +8,11 @@ const NIVEL: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
 const MAX_BYTES = 3 * 1024 * 1024; // el navegador ya la comprime (≤1600px JPEG)
 
 /** Pega una imagen (foto del comprobante) a una nota existente.
- * Body: { noteId, name, mime, data } — data en base64. Una imagen por llamada. */
+ * Body: { noteId, name, mime, data } — data en base64. Una imagen por llamada.
+ * Cualquier usuario con sesión puede hacerlo (también el de solo lectura). */
 export async function POST(req: NextRequest) {
   const sesion = await validarSesion(req.cookies.get(SESSION_COOKIE)?.value);
   if (!sesion) return NextResponse.json({ error: "Sesión requerida." }, { status: 401 });
-  if (NIVEL[sesion.rol] < NIVEL.EDITOR) {
-    return NextResponse.json({ error: "Tu rol no permite adjuntar imágenes." }, { status: 403 });
-  }
   const body = (await req.json()) as { noteId?: number; name?: string; mime?: string; data?: string };
   if (!body.noteId || !body.data || !body.mime?.startsWith("image/")) {
     return NextResponse.json({ error: "Faltan datos (noteId, mime image/*, data)." }, { status: 400 });
