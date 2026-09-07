@@ -38,16 +38,24 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, nota });
 }
 
-/** Marca resuelta / reabre o borra una nota. Body: { id, action: "resolve" | "reopen" | "delete" } */
+/** Edita el texto, marca resuelta / reabre o borra una nota.
+ * Body: { id, action: "edit" | "resolve" | "reopen" | "delete", note? }
+ * EDITOR+ puede todo; el rol de solo lectura solo puede EDITAR sus propias notas. */
 export async function PATCH(req: NextRequest) {
   const sesion = await validarSesion(req.cookies.get(SESSION_COOKIE)?.value);
   if (!sesion) return NextResponse.json({ error: "Sesión requerida." }, { status: 401 });
-  if (NIVEL[sesion.rol] < NIVEL.EDITOR) {
-    return NextResponse.json({ error: "Tu rol no permite modificar notas." }, { status: 403 });
-  }
-  const body = (await req.json()) as { id?: number; action?: "resolve" | "reopen" | "delete" };
+  const body = (await req.json()) as { id?: number; action?: "edit" | "resolve" | "reopen" | "delete"; note?: string };
   if (!body.id || !body.action) return NextResponse.json({ error: "Faltan datos (id, action)." }, { status: 400 });
-  if (body.action === "delete") {
+  const nota = await prisma.dayNote.findUnique({ where: { id: body.id }, select: { autor: true } });
+  if (!nota) return NextResponse.json({ error: "La nota no existe." }, { status: 404 });
+  const esMia = !!nota.autor && (nota.autor === sesion.name || nota.autor === sesion.email);
+  if (NIVEL[sesion.rol] < NIVEL.EDITOR && !(body.action === "edit" && esMia)) {
+    return NextResponse.json({ error: "Tu rol solo permite editar tus propias notas." }, { status: 403 });
+  }
+  if (body.action === "edit") {
+    if (!body.note?.trim()) return NextResponse.json({ error: "La nota no puede quedar vacía." }, { status: 400 });
+    await prisma.dayNote.update({ where: { id: body.id }, data: { note: body.note.trim() } });
+  } else if (body.action === "delete") {
     await prisma.dayNote.delete({ where: { id: body.id } });
   } else {
     await prisma.dayNote.update({ where: { id: body.id }, data: { resolved: body.action === "resolve" } });

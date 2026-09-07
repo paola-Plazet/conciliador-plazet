@@ -29,9 +29,11 @@ Jerónimo tenga EDITOR (campo `rolConciliador` del usuario en la nómina, /usuar
 Cortes de datos ese día: ventas 7-sep (parcial) · QR banco 6-sep · MP 7-sep · datáfono 3-sep · Alianza 7-sep ·
 Alegra 7-sep · Shopify 6-sep. Notas en BD: 0. Asignaciones manuales QR: 0 (Paola aún no resuelve el 35.650).
 
-**Jerónimo (rol VIEWER) puede crear notas y pegarles fotos, nada más** (Paola): el proxy deja pasar
-`POST /api/notas*` al rol de solo lectura; resolver/reabrir/borrar notas e imágenes sigue EDITOR+ y la
-página oculta esos botones al VIEWER (`/api/me`).
+**Jerónimo (rol VIEWER) puede crear notas, pegarles fotos y editar el texto de las SUYAS, nada más**
+(Paola): el proxy deja pasar `POST /api/notas*` y `PATCH /api/notas` al rol de solo lectura; la ruta
+solo le permite `action: "edit"` sobre notas cuyo `autor` = su nombre/email. Resolver/reabrir/borrar
+notas e imágenes sigue EDITOR+ y la página oculta esos botones al VIEWER (`/api/me` da name/email/rol).
+Editar = "✎ editar" junto al texto (componente `TextoNota`), en el modal del día y en la lista del mes.
 
 **NUEVO formato de ventas Karrot — `karrot_pagos`** (`src/lib/parsers/karrot-pagos.ts`): el allsales
 nuevo trae UNA FILA POR PAGO ("Nombre/Valor Método de Pago", "Cancelado", "TipoCuenta" CR/DB,

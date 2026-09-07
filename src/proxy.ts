@@ -26,8 +26,11 @@ export async function proxy(request: NextRequest) {
   // escrituras según rol (las lecturas GET pasan siempre)
   const esEscritura = request.method !== "GET" && request.method !== "HEAD";
   // Excepción (Paola, 07-sep): el rol de solo lectura SÍ puede crear notas de
-  // revisión y pegarles fotos (POST /api/notas y /api/notas/adjunto), nada más.
-  const esNota = request.method === "POST" && pathname.startsWith("/api/notas");
+  // revisión, pegarles fotos (POST /api/notas y /api/notas/adjunto) y editar
+  // el texto de las suyas (PATCH /api/notas; la ruta verifica que sea suya).
+  const esNota =
+    pathname.startsWith("/api/notas") &&
+    (request.method === "POST" || (request.method === "PATCH" && pathname === "/api/notas"));
   if (esEscritura && sesion.rol === "VIEWER" && !esNota) {
     return NextResponse.json({ error: "Tu rol en Conciliaciones es de solo lectura" }, { status: 403 });
   }
