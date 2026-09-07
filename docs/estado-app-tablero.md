@@ -57,9 +57,25 @@ $96.700 + $100.300 (misma tarjeta ····3911); B3 2-sep fac 7959 $9.400 vs dat
 fac 7970 $56.000 sin autorización que no está en el datáfono.
 
 **Notas crédito NO vienen en el allsales** (Paola preguntó por una NC de $112.200 en B3 el 2-sep): el
-informe no trae filas negativas ni devoluciones. Ese día B3 tiene falta de efectivo $56.200 + el pago
-tarjeta de $56.000 (fac 7970) sin datáfono = $112.200 exactos → la NC explica el día. Falta una fuente
-de notas crédito de Karrot (reporte aparte o conector) para descontarlas automáticamente.
+informe no trae filas negativas ni devoluciones. **Caso resuelto con el conector Karrot (MCP
+`generate-report`)**: `CUSTOMER_CREDIT_NOTES` / `ORDER_CREDIT_NOTE_VARIANTS` → NC 49 del 2-sep 19:07,
+B3, 2 capuccinos con ganoderma, bruto $112.200 con dcto $56.100 (neto $56.100), venta 7963 (cliente
+Jerónimo Duque). La 7963 (19:00) se pagó $56.000 VISA DB aut 289363 (SÍ está en el datáfono) + $56.200
+efectivo. `CASHIER_BALANCE` (cierre de caja B3): la devolución quedó registrada como −$56.000 datáfono
+y −$100 efectivo, y un minuto después la venta 7970 (19:08, anónimo) se cerró con $56.000 "datáfono"
+sin autorización + $100 efectivo = un CAMBIO de producto. Lo que pasó con la plata: el datáfono nunca
+devolvió nada (los $56.000 reales cubren la 7970) → la dif de datáfono de ese día es ficticia; y de la
+caja salieron $56.200 en efectivo (la asesora contó $804.500 vs $860.500 del sistema) → la falta de
+efectivo de $56.200 es REAL y coincide con el depósito. Regla aprendida: una NC registrada con el método
+equivocado mueve la diferencia de un canal a otro.
+**PRÓXIMO PASO propuesto**: fuente de devoluciones por método. La mejor es el cierre de caja de Karrot
+(`CASHIER_BALANCE`: por día/tienda/método trae Sale Income, Returns, System vs Counted Balance,
+Manual Expenses/Income) — netear `Returns` por canal y mostrar el faltante contado por la asesora.
+Pedirle a Paola el export de "Balances/Cierres de caja" y "Notas crédito" desde la web de Karrot (ago–sep)
+para construir los parsers sobre el formato real (los encabezados del export web vienen en español y
+distintos a los del MCP). `FINANCIAL_TRANSACTIONS` vino vacío para ese día. Horas: el allsales trae
+hora Colombia; los timestamps del MCP vienen con "Z" pero también son hora local (apertura de caja
+08:01Z, cierre 20:59Z) — no convertir.
 
 **BUG corregido en la ingesta** (venía del "cargador acepta ZIP" de la noche anterior, a15f670): un
 .xlsx también empieza por "PK" y `expandZips` lo descomponía en sus XML internos → cualquier Excel
