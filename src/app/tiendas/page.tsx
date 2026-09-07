@@ -115,7 +115,7 @@ export default function TiendasPage() {
   }
 
   /** pega las fotos elegidas a una nota existente (desde la lista del mes) */
-  async function pegarFotos(noteId: number, files: FileList | null) {
+  async function pegarFotos(noteId: number, files: FileList | File[] | null) {
     if (!files?.length) return;
     setSubiendo(true);
     const errores: string[] = [];
@@ -508,6 +508,7 @@ export default function TiendasPage() {
           puedeGestionar={puedeGestionar}
           puedeEditar={puedeEditarNota}
           onEditar={editarNota}
+          onFotos={pegarFotos}
           onAccion={notaAccion}
           onAdjuntar={(id) => { setAdjuntarA(id); inputFotos.current?.click(); }}
           onBorrarAdjunto={borrarAdjunto}
@@ -531,7 +532,7 @@ export default function TiendasPage() {
                   <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
                     {api.stores.find((s) => s.code === n.storeCode)?.name ?? "Empresa"} · {n.channel}
                   </span>
-                  <TextoNota n={n} puedeEditar={puedeEditarNota(n)} onGuardar={editarNota} />
+                  <TextoNota n={n} puedeEditar={puedeEditarNota(n)} onGuardar={editarNota} onFotos={pegarFotos} />
                   {n.autor && <span className="text-[10px] text-gray-400" title={n.autor}>— {autorCorto(n.autor)}</span>}
                   <button
                     onClick={() => { setAdjuntarA(n.id); inputFotos.current?.click(); }}
@@ -799,12 +800,30 @@ function autorCorto(a: string): string {
   return a.includes("@") ? a.split("@")[0] : a;
 }
 
-/** Texto de una nota con "editar" en línea (textarea + guardar/cancelar) */
-function TextoNota({ n, puedeEditar, onGuardar, className }: { n: Nota; puedeEditar: boolean; onGuardar: (id: number, note: string) => Promise<void>; className?: string }) {
+/** Texto de una nota con "editar" en línea (textarea + fotos nuevas + guardar/cancelar) */
+function TextoNota({ n, puedeEditar, onGuardar, onFotos, className }: {
+  n: Nota;
+  puedeEditar: boolean;
+  onGuardar: (id: number, note: string) => Promise<void>;
+  /** sube fotos nuevas a la nota (se llama al Guardar si se eligieron) */
+  onFotos: (id: number, files: File[]) => Promise<void>;
+  className?: string;
+}) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(n.note);
+  const [fotos, setFotos] = useState<File[]>([]);
   const [guardando, setGuardando] = useState(false);
   useEffect(() => { if (!editando) setTexto(n.note); }, [n.note, editando]);
+  const previews = useMemo(() => fotos.map((f) => URL.createObjectURL(f)), [fotos]);
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
+  async function guardar() {
+    setGuardando(true);
+    if (texto.trim() !== n.note) await onGuardar(n.id, texto.trim());
+    if (fotos.length) await onFotos(n.id, fotos);
+    setGuardando(false);
+    setFotos([]);
+    setEditando(false);
+  }
   if (!editando) {
     return (
       <span className={`flex-1 whitespace-pre-wrap ${className ?? "text-gray-700"}`}>
@@ -824,27 +843,58 @@ function TextoNota({ n, puedeEditar, onGuardar, className }: { n: Nota; puedeEdi
         rows={3}
         className="w-full rounded-lg border border-gray-300 p-2 text-xs focus:border-plazet-500 focus:outline-none"
       />
+      <span className="flex flex-wrap items-center gap-2">
+        <label className="cursor-pointer rounded-lg border border-dashed border-gray-300 px-2 py-1 text-[11px] text-gray-600 hover:border-plazet-500 hover:text-plazet-700">
+          📎 Agregar fotos
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => { const nuevos = Array.from(e.target.files ?? []); e.target.value = ""; if (nuevos.length) setFotos((f) => [...f, ...nuevos]); }}
+          />
+        </label>
+        {fotos.length > 0 && <span className="text-[11px] text-gray-400">{fotos.length} nueva{fotos.length > 1 ? "s" : ""} (se suben al guardar)</span>}
+      </span>
+      {fotos.length > 0 && (
+        <span className="flex flex-wrap gap-2">
+          {fotos.map((f, i) => (
+            <span key={i} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={previews[i]} alt={f.name} title={f.name} className="h-14 w-14 rounded-md border border-gray-200 object-cover" />
+              <button
+                onClick={() => setFotos((arr) => arr.filter((_, j) => j !== i))}
+                title="Quitar"
+                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-600 shadow"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </span>
+      )}
       <span className="flex gap-2 text-[11px]">
         <button
           disabled={guardando || !texto.trim()}
-          onClick={async () => { setGuardando(true); await onGuardar(n.id, texto.trim()); setGuardando(false); setEditando(false); }}
+          onClick={guardar}
           className="rounded bg-plazet-600 px-2 py-0.5 font-medium text-white hover:bg-plazet-700 disabled:opacity-50"
         >
-          {guardando ? "Guardando…" : "Guardar"}
+          {guardando ? (fotos.length ? "Guardando y subiendo fotos…" : "Guardando…") : "Guardar"}
         </button>
-        <button onClick={() => { setEditando(false); setTexto(n.note); }} className="text-gray-500 hover:underline">Cancelar</button>
+        <button onClick={() => { setEditando(false); setTexto(n.note); setFotos([]); }} className="text-gray-500 hover:underline">Cancelar</button>
       </span>
     </span>
   );
 }
 
-function NotaModal({ date, store, storeName, canal, existentes, puedeGestionar, puedeEditar, onEditar, onAccion, onAdjuntar, onBorrarAdjunto, onVerImg, onSaved, onClose }: {
+function NotaModal({ date, store, storeName, canal, existentes, puedeGestionar, puedeEditar, onEditar, onFotos, onAccion, onAdjuntar, onBorrarAdjunto, onVerImg, onSaved, onClose }: {
   date: string; store: string; storeName: string; canal: Canal;
   /** notas ya guardadas para este día/tienda (de todos los usuarios) */
   existentes: Nota[];
   puedeGestionar: boolean;
   puedeEditar: (n: Nota) => boolean;
   onEditar: (id: number, note: string) => Promise<void>;
+  onFotos: (id: number, files: File[]) => Promise<void>;
   onAccion: (id: number, action: "resolve" | "reopen" | "delete") => void;
   onAdjuntar: (noteId: number) => void;
   onBorrarAdjunto: (id: number) => void;
@@ -887,7 +937,7 @@ function NotaModal({ date, store, storeName, canal, existentes, puedeGestionar, 
             {existentes.map((n) => (
               <div key={n.id} className={`mt-2 border-b border-amber-100 pb-2 text-xs last:border-0 ${n.resolved ? "opacity-50" : ""}`}>
                 <div className="flex flex-wrap items-start gap-2">
-                  <TextoNota n={n} puedeEditar={puedeEditar(n)} onGuardar={onEditar} className="text-gray-800" />
+                  <TextoNota n={n} puedeEditar={puedeEditar(n)} onGuardar={onEditar} onFotos={onFotos} className="text-gray-800" />
                   {n.autor && <span className="text-[10px] text-gray-500" title={n.autor}>— {autorCorto(n.autor)}</span>}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px]">
