@@ -17,6 +17,7 @@ import { parseMercadopago } from "./parsers/mercadopago";
 import { parseLinux } from "./parsers/linux";
 import { parseKarrot, KARROT_CUTOVER } from "./parsers/karrot";
 import { parseKarrotVentas } from "./parsers/karrot-ventas";
+import AdmZip from "adm-zip";
 import { detectFileType, type FileKind } from "./parsers/detect";
 import { conciliar, type ConciliationSummary } from "./engine";
 import { loadRefMap, loadHolidays } from "./process";
@@ -128,15 +129,52 @@ export async function ingestSales(
   });
 }
 
+/** Los bancos entregan los extractos empaquetados en ZIP (ej. el CSV de la
+ * cuenta 191 de Bancolombia). Aquí se abren y cada archivo interno se procesa
+ * como si se hubiera subido directo. */
+export function expandZips(files: { filename: string; buffer: Buffer }[]): {
+  files: { filename: string; buffer: Buffer }[];
+  warnings: string[];
+} {
+  const out: { filename: string; buffer: Buffer }[] = [];
+  const warnings: string[] = [];
+  for (const f of files) {
+    const esZip =
+      f.filename.toLowerCase().endsWith(".zip") ||
+      (f.buffer.length > 3 && f.buffer[0] === 0x50 && f.buffer[1] === 0x4b && f.buffer[2] <= 0x08);
+    if (!esZip) {
+      out.push(f);
+      continue;
+    }
+    try {
+      const zip = new AdmZip(f.buffer);
+      const entries = zip
+        .getEntries()
+        .filter((e) => !e.isDirectory && !e.entryName.includes("__MACOSX") && !e.entryName.split("/").pop()!.startsWith("."));
+      if (entries.length === 0) {
+        warnings.push(`${f.filename}: el ZIP está vacío.`);
+        continue;
+      }
+      for (const e of entries) {
+        out.push({ filename: e.entryName.split("/").pop()!, buffer: e.getData() });
+      }
+    } catch {
+      warnings.push(`${f.filename}: no se pudo abrir el ZIP.`);
+    }
+  }
+  return { files: out, warnings };
+}
+
 /** Procesa y guarda un archivo detectado; devuelve el resumen de la ingesta */
 export async function ingestFiles(
   files: { filename: string; buffer: Buffer }[],
 ): Promise<IngestOutput> {
   const closed = await loadClosedMonths();
   const out: IngestFileResult[] = [];
-  const warnings: string[] = [];
+  const expanded = expandZips(files);
+  const warnings: string[] = [...expanded.warnings];
 
-  for (const f of files) {
+  for (const f of expanded.files) {
     const { kind } = detectFileType(f.filename, f.buffer);
     let res = { from: null as string | null, to: null as string | null, inserted: 0, skipped: 0 };
 
