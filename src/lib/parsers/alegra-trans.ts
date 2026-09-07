@@ -110,7 +110,10 @@ export function parseAlegraTrans(buffer: Buffer): AlegraParseResult {
       (factura ? storeFromInvoicePrefix(factura) : null);
 
     sales.push({
-      invoice: String(row[cNumero] ?? factura ?? "").trim(),
+      // El número que identifica la venta es el de la FACTURA (col. Asociaciones,
+      // ej. B2122) — el "Número" del comprobante de pago solo sirve de respaldo
+      // cuando la fila no trae factura asociada. (Corrección Paola 07-sep.)
+      invoice: factura || String(row[cNumero] ?? "").trim(),
       date,
       bodega: cuenta, // texto crudo de la cuenta (se muestra como origen)
       storeCode,
