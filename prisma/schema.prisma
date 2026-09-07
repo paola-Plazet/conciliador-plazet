@@ -149,6 +149,38 @@ model DataphoneEntry {
   @@index([txDate])
 }
 
+/// Nota de revisión que Paola deja sobre un día/tienda/canal mientras revisa
+/// diferencias ("esto es un pendiente", "la asesora dice X"). Claude las lee
+/// después para analizarlas y cuadrar juntas lo que haga falta.
+model DayNote {
+  id        Int      @id @default(autoincrement())
+  date      String // YYYY-MM-DD
+  storeCode String? // null = nota de empresa (ej. QR global)
+  channel   String // efectivo | datafono | qr | mercadopago | otro
+  note      String
+  autor     String?
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
+
+/// Pago recibido según ALEGRA, con su CUENTA destino (QR Bancolombia,
+/// Rappi/Addi, Mercadopago, Credibanco, Alianza, Efectivo POS...). Es el
+/// detalle que los reportes descargables no traen: permite saber si una venta
+/// "transferencia" fue de verdad QR o entró por otra plataforma.
+model AlegraPago {
+  id       Int     @id @default(autoincrement())
+  alegraId String  @unique // id del pago en Alegra
+  date     String // YYYY-MM-DD
+  amount   Float
+  cuenta   String // nombre de la cuenta destino en Alegra
+  metodo   String // cash | transfer | debit-card | credit-card | ...
+  invoice  String? // número de la primera factura asociada (ej. B2122)
+
+  @@index([date])
+}
+
 /// Asignación MANUAL de un pago QR del banco a una tienda (para los empates:
 /// mismo valor vendido en 2+ tiendas el mismo día y menos pagos que ventas).
 /// Se guarda por (date, amount, payer) — no por id — para sobrevivir a las

@@ -9,6 +9,7 @@ import { computeLedger } from "@/lib/ledger";
 import { loadHolidays } from "@/lib/process";
 import { nextBusinessDay } from "@/lib/dates";
 import { STORES, storeName } from "@/lib/stores";
+import { CUENTAS_NO_QR } from "@/lib/alegra-api";
 
 export const runtime = "nodejs";
 
@@ -29,12 +30,13 @@ interface DiaEfe {
 export async function GET(request: NextRequest) {
   const month = request.nextUrl.searchParams.get("month");
 
-  const [salesRows, dataRows, qrRows, mpRows, manualQr, ledger, holidaysArr] = await Promise.all([
+  const [salesRows, dataRows, qrRows, mpRows, manualQr, alegraTransfers, ledger, holidaysArr] = await Promise.all([
     prisma.sale.findMany(),
     prisma.dataphoneEntry.findMany(),
     prisma.qrEntry.findMany(),
     prisma.mercadopagoEntry.findMany(),
     prisma.qrAssignment.findMany(),
+    prisma.alegraPago.findMany({ where: { metodo: "transfer" } }),
     computeLedger(),
     loadHolidays(),
   ]);
@@ -57,6 +59,26 @@ export async function GET(request: NextRequest) {
     return "otros";
   };
 
+  // Según ALEGRA, algunas ventas registradas como "transferencia/QR" en
+  // realidad entraron por otra plataforma (Rappi/Addi, Mercadopago, Nequi):
+  // el pago de Alegra con el mismo valor y fecha lo delata. Esas ventas se
+  // sacan del canal QR (no hay que esperarlas en los PAGO QR del banco) y se
+  // muestran en su plataforma real.
+  const otraPlatPorClave = new Map<string, string[]>(); // `${date}|${monto}` -> cuentas
+  for (const a of alegraTransfers) {
+    if (!inMonth(a.date) || !CUENTAS_NO_QR.includes(a.cuenta)) continue;
+    const k = `${a.date}|${Math.round(a.amount)}`;
+    const arr = otraPlatPorClave.get(k) ?? [];
+    arr.push(a.cuenta);
+    otraPlatPorClave.set(k, arr);
+  }
+  const otraPlat = new Map<number, string>(); // Sale.id -> cuenta Alegra
+  for (const s of salesRows) {
+    if (s.method !== "TRANSFERENCIA" || !inMonth(s.date)) continue;
+    const arr = otraPlatPorClave.get(`${s.date}|${Math.round(s.amount)}`);
+    if (arr?.length) otraPlat.set(s.id, arr.shift()!);
+  }
+
   // ventas por (tienda, día, canal)
   const efeV = new Map<string, number>(), tarV = new Map<string, number>(), qrV = new Map<string, number>();
   const mpV = new Map<string, number>(), rappiV = new Map<string, number>(), addiV = new Map<string, number>(), otroV = new Map<string, number>();
@@ -65,7 +87,13 @@ export async function GET(request: NextRequest) {
     const k = `${s.storeCode}|${s.date}`;
     if (s.method === "EFECTIVO") add(efeV, k, s.amount);
     else if (s.method === "TARJETA_CREDITO" || s.method === "TARJETA_DEBITO") add(tarV, k, s.amount);
-    else if (s.method === "TRANSFERENCIA") add(qrV, k, s.amount);
+    else if (s.method === "TRANSFERENCIA") {
+      const cuenta = otraPlat.get(s.id);
+      if (!cuenta) add(qrV, k, s.amount);
+      else if (cuenta === "Rappi / Addi") add(rappiV, k, s.amount);
+      else if (cuenta === "Mercadopago") add(mpV, k, s.amount);
+      else add(otroV, k, s.amount);
+    }
     else {
       const p = plataforma(s.bodega);
       add(p === "mercadopago" ? mpV : p === "rappi" ? rappiV : p === "addi" ? addiV : otroV, k, s.amount);
@@ -91,7 +119,7 @@ export async function GET(request: NextRequest) {
   const diaDif = (a: string, b: string) =>
     Math.abs(Math.round((Date.parse(a + "T00:00:00Z") - Date.parse(b + "T00:00:00Z")) / 86400000));
   const qrSalesList = salesRows
-    .filter((s) => s.method === "TRANSFERENCIA" && s.storeCode && inMonth(s.date))
+    .filter((s) => s.method === "TRANSFERENCIA" && s.storeCode && inMonth(s.date) && !otraPlat.has(s.id))
     .map((s) => ({ date: s.date, store: s.storeCode as string, amount: Math.round(s.amount), used: false }));
   const qrByAmount = new Map<number, typeof qrSalesList>();
   for (const s of qrSalesList) {

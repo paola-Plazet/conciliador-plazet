@@ -16,15 +16,23 @@ export async function GET(req: NextRequest) {
   }
   const desde = new Date(Date.parse(date) - 6 * 86400000).toISOString().slice(0, 10);
   const hasta = new Date(Date.parse(date) + 6 * 86400000).toISOString().slice(0, 10);
-  const [facturas, pagos, stores] = await Promise.all([
+  const [facturas, pagos, stores, alegra] = await Promise.all([
     prisma.sale.findMany({
       where: { method: "TRANSFERENCIA", date, ...(store ? { storeCode: store } : {}) },
       orderBy: [{ storeCode: "asc" }, { amount: "desc" }],
     }),
     prisma.qrEntry.findMany({ where: { date: { gte: desde, lte: hasta } }, orderBy: { date: "asc" } }),
     prisma.store.findMany(),
+    prisma.alegraPago.findMany({ where: { date, metodo: "transfer" } }),
   ]);
   const nombre = new Map(stores.map((s) => [s.code, s.name]));
+  // cuenta destino según Alegra, por valor (multiconjunto: se consume una vez)
+  const cuentaPorValor = new Map<number, string[]>();
+  for (const a of alegra) {
+    const arr = cuentaPorValor.get(Math.round(a.amount)) ?? [];
+    arr.push(a.cuenta);
+    cuentaPorValor.set(Math.round(a.amount), arr);
+  }
 
   const usados = new Set<number>();
   const diaDif = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
@@ -39,11 +47,14 @@ export async function GET(req: NextRequest) {
       if (score < bestScore) { bestScore = score; best = p; }
     }
     if (best) usados.add(best.id);
+    const cuentas = cuentaPorValor.get(Math.round(f.amount));
+    const cuentaAlegra = cuentas?.shift() ?? null; // consume una por factura
     return {
       invoice: f.invoice,
       store: f.storeCode ?? "?",
       storeName: f.storeCode ? (nombre.get(f.storeCode) ?? f.storeCode) : "Sin tienda",
       amount: f.amount,
+      cuentaAlegra,
       pago: best ? { date: best.date, amount: best.amount, payer: best.payer } : null,
     };
   });

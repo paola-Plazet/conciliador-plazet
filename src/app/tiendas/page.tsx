@@ -91,6 +91,8 @@ export default function TiendasPage() {
   const [loading, setLoading] = useState(true);
   const [qrDia, setQrDia] = useState<{ date: string; store?: string; label?: string } | null>(null); // detalle QR abierto
   const [refresh, setRefresh] = useState(0);
+  const [notaDe, setNotaDe] = useState<string | null>(null); // día al que se le agrega nota
+  const [notas, setNotas] = useState<{ id: number; date: string; storeCode: string | null; channel: string; note: string; resolved: boolean }[]>([]);
 
   /** Resuelve un empate: asigna el pago QR a la tienda elegida y recarga */
   async function asignarQr(r: { date: string; amount: number; payer: string }, storeCode: string) {
@@ -98,6 +100,16 @@ export default function TiendasPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date: r.date, amount: r.amount, payer: r.payer, store: storeCode }),
+    });
+    if (res.ok) setRefresh((x) => x + 1);
+  }
+
+  /** resolver / reabrir / borrar una nota de revisión */
+  async function notaAccion(id: number, action: "resolve" | "reopen" | "delete") {
+    const res = await fetch("/api/notas", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action }),
     });
     if (res.ok) setRefresh((x) => x + 1);
   }
@@ -115,6 +127,15 @@ export default function TiendasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, refresh]);
 
+  // notas de revisión del mes
+  useEffect(() => {
+    if (!month) return;
+    fetch(`/api/notas?month=${month}`)
+      .then((r) => r.json())
+      .then((d) => setNotas(d.notas ?? []))
+      .catch(() => {});
+  }, [month, refresh]);
+
   const tienda = api?.data?.[store];
   const dias = useMemo(() => tienda?.days ?? [], [tienda]);
   const tot = tienda?.totales;
@@ -123,6 +144,7 @@ export default function TiendasPage() {
     [dias],
   );
   const ver = (c: Canal) => canal === "todo" || canal === c;
+  const notasKeys = new Set(notas.filter((n) => !n.resolved).map((n) => `${n.date}|${n.storeCode ?? ""}`));
 
   if (loading && !api) return <div className="p-10 text-plazet-600">Cargando tablero…</div>;
   if (!api || !api.months.length)
@@ -286,6 +308,8 @@ export default function TiendasPage() {
                   ver={ver}
                   canal={canal}
                   onQrClick={(f) => setQrDia({ date: f, store, label: api.stores.find((s) => s.code === store)?.name ?? store })}
+                  onNota={setNotaDe}
+                  tieneNota={notasKeys.has(`${d.date}|${store}`)}
                 />
               ))}
           </tbody>
@@ -420,6 +444,38 @@ export default function TiendasPage() {
       })()}
 
       {qrDia && <QrDetalleModal date={qrDia.date} store={qrDia.store} storeLabel={qrDia.label} onClose={() => setQrDia(null)} />}
+      {notaDe && (
+        <NotaModal
+          date={notaDe}
+          store={store}
+          storeName={api.stores.find((s) => s.code === store)?.name ?? store}
+          canal={canal}
+          onSaved={() => setRefresh((x) => x + 1)}
+          onClose={() => setNotaDe(null)}
+        />
+      )}
+
+      {notas.length > 0 && (
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-700">📝 Notas de revisión del mes</h2>
+          <p className="mt-1 text-xs text-gray-500">Lo que vas encontrando al revisar; Claude las lee después para analizarlas y cuadrar juntas.</p>
+          <div className="mt-3 flex flex-col gap-1.5">
+            {notas.map((n) => (
+              <div key={n.id} className={`flex flex-wrap items-center gap-2 border-b border-gray-100 pb-1.5 text-xs ${n.resolved ? "opacity-50" : ""}`}>
+                <span className="font-medium text-gray-600">{n.date.slice(8)}/{n.date.slice(5, 7)}</span>
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
+                  {api.stores.find((s) => s.code === n.storeCode)?.name ?? "Empresa"} · {n.channel}
+                </span>
+                <span className="flex-1 text-gray-700">{n.note}</span>
+                <button onClick={() => notaAccion(n.id, n.resolved ? "reopen" : "resolve")} className="font-medium text-plazet-700 hover:underline">
+                  {n.resolved ? "reabrir" : "✓ resuelta"}
+                </button>
+                <button onClick={() => notaAccion(n.id, "delete")} className="text-gray-400 hover:text-red-600">borrar</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <p className="mt-4 text-xs text-gray-400">
         Datos al: ventas {api.cut.sales ?? "—"} · banco {api.cut.bank ?? "—"} · QR {api.cut.qr ?? "—"} · datafono {api.cut.datafono ?? "—"}
@@ -432,7 +488,7 @@ export default function TiendasPage() {
  * el listado de empresa) vs los pagos TOTALES que entraron al banco ese día */
 function QrDetalleModal({ date, store, storeLabel, onClose }: { date: string; store?: string; storeLabel?: string; onClose: () => void }) {
   interface Det {
-    facturas: { invoice: string; store: string; storeName: string; amount: number; pago: { date: string; amount: number; payer: string } | null }[];
+    facturas: { invoice: string; store: string; storeName: string; amount: number; cuentaAlegra: string | null; pago: { date: string; amount: number; payer: string } | null }[];
     pagosDelDia: { amount: number; payer: string }[];
   }
   const [det, setDet] = useState<Det | null>(null);
@@ -481,6 +537,8 @@ function QrDetalleModal({ date, store, storeLabel, onClose }: { date: string; st
                         ) : (
                           <span className="text-amber-600">⚠ {f.pago.payer} · {cop(f.pago.amount)} el {diaCorto(f.pago.date)}</span>
                         )
+                      ) : f.cuentaAlegra && f.cuentaAlegra !== "QR Bancolombia" ? (
+                        <span className="text-sky-700">→ Alegra dice: entró por <b>{f.cuentaAlegra}</b> (no es QR)</span>
                       ) : (
                         <span className="font-medium text-red-600">✗ sin pago que calce</span>
                       )}
@@ -502,6 +560,45 @@ function QrDetalleModal({ date, store, storeLabel, onClose }: { date: string; st
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Agregar una nota de revisión a un día (tienda + canal actuales) */
+function NotaModal({ date, store, storeName, canal, onSaved, onClose }: { date: string; store: string; storeName: string; canal: Canal; onSaved: () => void; onClose: () => void }) {
+  const [texto, setTexto] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  async function guardar() {
+    if (!texto.trim() || guardando) return;
+    setGuardando(true);
+    const res = await fetch("/api/notas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, storeCode: store, channel: canal === "todo" ? "otro" : canal, note: texto }),
+    });
+    setGuardando(false);
+    if (res.ok) { onSaved(); onClose(); }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-bold text-gray-800">📝 Nota — {storeName} · {diaCorto(date)}</h3>
+        <textarea
+          autoFocus
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          rows={4}
+          placeholder="Ej: la diferencia es un pago que la clienta hizo por Nequi / valor pendiente por confirmar con la asesora…"
+          className="mt-3 w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-plazet-500 focus:outline-none"
+        />
+        <p className="mt-1 text-[11px] text-gray-400">Queda guardada en la lista del mes para revisarla luego con Claude.</p>
+        <div className="mt-3 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100">Cancelar</button>
+          <button onClick={guardar} disabled={!texto.trim() || guardando} className="rounded-lg bg-plazet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-plazet-700 disabled:opacity-50">
+            {guardando ? "Guardando…" : "Guardar nota"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -561,7 +658,7 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "ok"
   );
 }
 
-function FilaDia({ d, ver, canal, onQrClick }: { d: Dia; ver: (c: Canal) => boolean; canal: Canal; onQrClick?: (date: string) => void }) {
+function FilaDia({ d, ver, canal, onQrClick, onNota, tieneNota }: { d: Dia; ver: (c: Canal) => boolean; canal: Canal; onQrClick?: (date: string) => void; onNota?: (date: string) => void; tieneNota?: boolean }) {
   const e = d.efe;
   const mostrarDifEfe = e.estado !== "AGRUPADO" && e.estado !== "SIN_VENTA";
 
@@ -583,7 +680,16 @@ function FilaDia({ d, ver, canal, onQrClick }: { d: Dia; ver: (c: Canal) => bool
 
   return (
     <tr className="border-b border-gray-100 hover:bg-plazet-50/40">
-      <td className="px-4 py-2 font-medium text-gray-700">{d.date.slice(8)}/{d.date.slice(5, 7)}</td>
+      <td className="whitespace-nowrap px-4 py-2 font-medium text-gray-700">
+        {d.date.slice(8)}/{d.date.slice(5, 7)}
+        <button
+          onClick={() => onNota?.(d.date)}
+          title={tieneNota ? "Este día tiene notas — agregar otra" : "Agregar nota de revisión a este día"}
+          className={`ml-1.5 text-[11px] ${tieneNota ? "" : "opacity-30 hover:opacity-100"}`}
+        >
+          📝
+        </button>
+      </td>
       {ver("efectivo") && <td className="px-3 py-2 text-right">{e.venta ? cop(e.venta) : "—"}</td>}
       {ver("efectivo") && (
         <td className="px-3 py-2 text-right text-gray-600">

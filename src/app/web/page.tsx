@@ -103,6 +103,14 @@ export default function WebPage() {
       } catch {
         mpMsg = " · ⚠ MP: sin conexión";
       }
+      // y los pagos de Alegra del mes en curso (cuenta destino de cada pago)
+      try {
+        const r3 = await fetch("/api/alegra/sync", { method: "POST" });
+        const d3 = await r3.json();
+        mpMsg += r3.ok ? ` · Alegra: ${d3.pagos} pagos` : ` · ⚠ Alegra: ${d3.error ?? "error"}`;
+      } catch {
+        mpMsg += " · ⚠ Alegra: sin conexión";
+      }
       setMsg(`Sincronizado · ${parts.join(" · ")}${mpMsg}${d.errors?.length ? ` · ⚠ ${d.errors.join(" · ")}` : ""}`);
       load(month || undefined);
     } catch (e) {
