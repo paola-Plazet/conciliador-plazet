@@ -76,6 +76,16 @@ Total 28 QR mal clasificados con nota. Paola ya usó los botones "fue Rappi/Addi
 #13–#18 (B1 11-may $239.750, 10-may $85.150, 16-may $406.750, 22-may $96.700, 27-may $67.550 → Addi; 9-may
 $85.800 → Rappi) → **Plaza mayo QR = 0**; queda Unioccidente con 6 días ($979.638).
 
+**CRUCE CON ADDI** (`Downloads/Resumen general.xlsx` = reporte Addi 1-abr→7-sep, hoja "Transacciones +
+cancelaciones", aliado naturallight-online, tiendas "PLAZET PLAZA DE LAS AMERICAS"/"PLAZET UNIOCCIDENTE"/
+"PLAZET UNICENTRO NORTE"/"LOCAL JARDIN PLAZA"; Addi paga ~45 días después; `scripts/addi-cruce.ts [--aplicar]`):
+A) 27 ventas POS marcadas Addi → 24 exactas en Addi ✓; las 3 que no están (B1 6-may $35.650 y $74.600, B2
+7-may $102.300, bodega "Rappi / Addi") SÍ están en Rappi → correctas. B) 7 QR de Unioccidente eran Addi →
+reclasificadas (#19–#25: 12-may $140.000, 13-may $160.438 y $193.500, 20-may $78.550, 22-may $51.400,
+24-may $286.250, 25-may $69.500). **MAYO QR = 0 en las 4 tiendas; junio 0; julio solo B2 5-jul $107.700;
+agosto B1 17-ago $224.600, B2 14-ago $161.700, B3 31-ago $54.750.** 4 transacciones Addi de Jardín Plaza
+(24-abr, 7/8/10-may) sin venta en el POS = JP aún era de NL.
+
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
 REAPLICA tras cada recarga de ventas (`aplicarOverrides()` al final de la ingesta en ledger.ts), así
