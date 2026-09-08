@@ -119,6 +119,14 @@ diferencias de todos los días del período.
 $224.600 = facturas 5619 $224.000 + 5632 $600 en Plaza el 17-ago → Plaza agosto QR = 0. Quedan: B2 5-jul
 $107.700, B2 14-ago $161.700, B3 31-ago $54.750.
 
+**Jardín Plaza 31-jul / 4-ago (Paola)**: el 31-jul SÍ tiene efectivo ($391.550) pero se consignó junto con
+1 y 2-ago el 3-ago → en la vista de julio la fila decía "agrupado ↓" apuntando a otro mes; ahora dice
+"agrupado con 01/08 + 02/08 · consignado 03/08" y la dif "ver 02/08". El 4-ago Paola cuenta $105.050 y la
+app tenía $17.500: la factura 3748 en efectivo ($87.550) se ANULÓ y se rehízo como 3774 con "Bono Regalo"
+$87.550 + $250 efectivo, pero la plata sí se consignó ($105.050 el 5-ago, ref **31483657 → asignada a JP**,
+antes sin tienda). Override #26: 3774 Bono → **Efectivo** (`PLATAFORMAS` ahora incluye "Efectivo" y "QR
+Bancolombia" = métodos reales; `destino()` en overrides.ts). JP 3/4/5-ago CUADRA.
+
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
 REAPLICA tras cada recarga de ventas (`aplicarOverrides()` al final de la ingesta en ledger.ts), así

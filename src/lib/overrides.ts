@@ -4,10 +4,19 @@
 
 import { prisma } from "./db";
 
-export const PLATAFORMAS = ["Rappi", "Addi", "Mercadopago", "Nequi", "Bono Regalo"] as const;
+export const PLATAFORMAS = ["Rappi", "Addi", "Mercadopago", "Nequi", "Bono Regalo", "Efectivo", "QR Bancolombia"] as const;
 export type Plataforma = (typeof PLATAFORMAS)[number];
 
 const bodegaBase = (b: string) => b.split(" · ")[0];
+/** A qué método y bodega lleva cada reclasificación. "Efectivo" y "QR Bancolombia" son
+ * métodos reales (la venta vuelve a un canal que sí se concilia); el resto son
+ * plataformas informativas (OTRO con la plataforma en la bodega). */
+function destino(plataforma: string, bodega: string): { method: string; bodega: string } {
+  const base = bodegaBase(bodega);
+  if (plataforma === "Efectivo") return { method: "EFECTIVO", bodega: base };
+  if (plataforma === "QR Bancolombia") return { method: "TRANSFERENCIA", bodega: base };
+  return { method: "OTRO", bodega: `${base} · ${plataforma}` };
+}
 
 /** Aplica TODAS las reclasificaciones (o solo las de unas fechas) sobre Sale. */
 export async function aplicarOverrides(fechas?: string[]): Promise<number> {
@@ -30,9 +39,9 @@ export async function aplicarOverrides(fechas?: string[]): Promise<number> {
       }
     }
     for (const v of ventas) {
-      const bodega = `${bodegaBase(v.bodega)} · ${o.plataforma}`;
-      if (v.method === "OTRO" && v.bodega === bodega) continue; // ya aplicada
-      await prisma.sale.update({ where: { id: v.id }, data: { method: "OTRO", bodega } });
+      const d = destino(o.plataforma, v.bodega);
+      if (v.method === d.method && v.bodega === d.bodega) continue; // ya aplicada
+      await prisma.sale.update({ where: { id: v.id }, data: { method: d.method, bodega: d.bodega } });
       n++;
     }
   }

@@ -1247,7 +1247,15 @@ function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: {
                 <div className="text-[10px] leading-tight text-gray-400">consignado {diaCorto(e.depositoFecha)}</div>
               )}
             </span>
-          ) : e.estado === "AGRUPADO" ? <span className="text-[11px] text-gray-400">agrupado ↓</span>
+          ) : e.estado === "AGRUPADO" ? (
+            <span
+              className="text-[11px] text-gray-400"
+              title={`Este día se consignó junto con ${e.grupo.map((g) => diaCorto(g)).join(" + ")}; el depósito se muestra en la fila del ${diaCorto(e.grupo[e.grupo.length - 1])}`}
+            >
+              agrupado con {e.grupo.filter((g) => g !== d.date).map((g) => g.slice(8) + "/" + g.slice(5, 7)).join(" + ")}
+              {e.depositoFecha && <div className="leading-tight">consignado {diaCorto(e.depositoFecha)}</div>}
+            </span>
+          )
             : e.estado === "PENDIENTE" && e.enPlazo ? <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-500">⏳ en plazo</span>
             : e.estado === "PENDIENTE" ? <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-700">sin consignar</span>
             : "—"}
@@ -1255,7 +1263,9 @@ function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: {
       )}
       {ver("efectivo") && (
         <td className={`px-3 py-2 text-right ${efeEnPlazo ? "text-gray-400" : mostrarDifEfe ? difColor(-e.dif) : "text-gray-300"}`}>
-          {efeEnPlazo ? "en plazo" : mostrarDifEfe && e.venta + (e.deposito ?? 0) !== 0 ? difTexto(-e.dif) : "—"}
+          {efeEnPlazo ? "en plazo"
+            : e.estado === "AGRUPADO" ? <span className="text-[11px] text-gray-400">ver {e.grupo[e.grupo.length - 1]?.slice(8)}/{e.grupo[e.grupo.length - 1]?.slice(5, 7)}</span>
+            : mostrarDifEfe && e.venta + (e.deposito ?? 0) !== 0 ? difTexto(-e.dif) : "—"}
         </td>
       )}
       {ver("datafono") && (
