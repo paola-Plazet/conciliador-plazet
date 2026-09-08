@@ -93,7 +93,7 @@ export default function ResumenPage() {
               </table>
               {api.otrosVenta.length > 0 && (
                 <div className="px-5 py-3 text-xs text-gray-500 border-t border-plazet-50">
-                  Sin archivo de recaudo cargado en la app (se concilian aparte):{" "}
+                  Sin archivo de recaudo cargado en la app (Rappi y Addi los recauda Natural Light, por ahora; se concilian aparte):{" "}
                   {api.otrosVenta.map((o) => `${o.plataforma} ${cop(o.venta)}`).join(" · ")}
                 </div>
               )}

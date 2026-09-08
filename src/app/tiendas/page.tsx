@@ -330,8 +330,8 @@ export default function TiendasPage() {
             <CardCanal icon={<Wallet size={18} />} titulo="Mercadopago" venta={tot.mercadopago} recaudo={null} faltante={null}
               extra="Es de Habbie · cuadre vs Mercado Pago (empresa) abajo ↓" />
           )}
-          {ver("rappi") && <CardCanal icon={<Bike size={18} />} titulo="Rappi" venta={tot.rappi} recaudo={null} faltante={null} extra="Recaudado por Natural Light" />}
-          {ver("addi") && <CardCanal icon={<Landmark size={18} />} titulo="Addi" venta={tot.addi} recaudo={null} faltante={null} />}
+          {ver("rappi") && <CardCanal icon={<Bike size={18} />} titulo="Rappi" venta={tot.rappi} recaudo={null} faltante={null} extra="Lo recauda Natural Light (por ahora): no entra a Habbie" />}
+          {ver("addi") && <CardCanal icon={<Landmark size={18} />} titulo="Addi" venta={tot.addi} recaudo={null} faltante={null} extra="Lo recauda Natural Light (por ahora): no entra a Habbie" />}
           {canal === "todo" && <CardCanal icon={<ShoppingBag size={18} />} titulo="Otros" venta={tot.otros} recaudo={null} faltante={null} />}
         </div>
       )}

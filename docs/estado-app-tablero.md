@@ -51,6 +51,11 @@ $53.300, B1 22-may $184.400) = casi seguro **Addi**. Con el patrón -350 se marc
 ($79.700) y fac 1947 $13.150 ($12.800) → mayo queda en 13 QR sin pago. Órdenes Rappi sin nada en el POS:
 B1 27-abr $53.300 cc y B1 9-may $91.950 cash.
 
+**REGLA DE NEGOCIO (Paola, 07-sep): Rappi Y ADDI los recauda NATURAL LIGHT, por ahora.** Las
+liquidaciones de ambas plataformas por ventas de tiendas Plazet entran a las cuentas de NL, no a Habbie.
+En el conciliador son canales informativos (sin archivo de recaudo); las tarjetas de /tiendas lo dicen.
+Si cambia (Habbie abre su propia cuenta Rappi/Addi), habrá que cargar sus liquidaciones y cruzarlas.
+
 **QR CONTABILIZADOS COMO EFECTIVO (Alegra)** — Paola: "el efectivo del 16 y 17 no me suma; la columna
 Método dice Transferencia y la cuenta dice Efectivo POS". En el reporte de transacciones hay **23 filas de
 Plaza (16-may → 22-jun, $1.844.620)** con cuenta "Efectivo POS - PLAZET PLAZA" y método "Transferencia": son
@@ -62,6 +67,14 @@ día/tienda (17, autor Claude) con factura, valor y pagador del banco (`scripts/
 idempotente). OJO: al recargar Alegra los números de factura cambiaron (comprobante "527" → factura "B1240")
 y las reclasificaciones Rappi dejaron de calzar → `aplicarOverrides()` ahora se AUTOCORRIGE (busca por
 fecha/tienda/valor/método original y adopta el número nuevo si hay una sola candidata); las 12 quedaron bien.
+
+Ampliación: la misma regla aplica a la cuenta **"Caja Menor PLAZET …"** (9-may Plaza $124.350 fac B198 =
+QR de Diana Camila; salía como "Otros") y a las cuentas de banco **Alianza / Bancolombia AH 3911** con
+método Transferencia **y factura de tienda (B…)** (5-may 4 casos en Alianza, 8–10 jul 19/19 en 3911; sin
+factura de tienda son descuentos de proveedores → siguen OTRO). `classify(cuenta, metodo, factura)`.
+Total 28 QR mal clasificados con nota. Paola ya usó los botones "fue Rappi/Addi" del detalle QR: overrides
+#13–#18 (B1 11-may $239.750, 10-may $85.150, 16-may $406.750, 22-may $96.700, 27-may $67.550 → Addi; 9-may
+$85.800 → Rappi) → **Plaza mayo QR = 0**; queda Unioccidente con 6 días ($979.638).
 
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se

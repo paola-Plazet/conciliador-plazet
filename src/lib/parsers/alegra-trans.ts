@@ -24,11 +24,16 @@ import type { AlegraParseResult } from "./alegra";
  * registra un pago con método "Transferencia" — es un QR que la asesora
  * contabilizó en la caja (Plaza, 23 casos may–jun; todos aparecen en el banco
  * como PAGO QR). Ahí manda el MÉTODO: va al canal QR, no al efectivo. */
-function classify(cuenta: string, metodo: string): PaymentMethod {
+function classify(cuenta: string, metodo: string, factura = ""): PaymentMethod {
   const c = normalize(cuenta);
   const m = normalize(metodo);
-  if (c.startsWith("EFECTIVO POS")) return m.includes("TRANSFERENCIA") ? "TRANSFERENCIA" : "EFECTIVO";
+  // "Caja Menor PLAZET ..." es la caja de la tienda: misma regla (9-may Plaza $124.350 era un QR)
+  if (c.startsWith("EFECTIVO POS") || c.startsWith("CAJA MENOR")) return m.includes("TRANSFERENCIA") ? "TRANSFERENCIA" : "EFECTIVO";
   if (c.includes("QR")) return "TRANSFERENCIA";
+  // Cuentas de banco (Alianza / Bancolombia AH 3911) con método Transferencia y factura de
+  // TIENDA (B…): también son QR mal contabilizados (5-may Alianza 4 casos, 8–10 jul 3911 19/19 en el
+  // banco). Sin factura de tienda (descuentos de proveedores, giros de NL) siguen como OTRO.
+  if ((c.startsWith("ALIANZA") || c.includes("3911")) && m.includes("TRANSFERENCIA") && /^B\d/.test(factura)) return "TRANSFERENCIA";
   if (m.includes("CREDITO")) return "TARJETA_CREDITO";
   if (m.includes("DEBITO")) return "TARJETA_DEBITO";
   return "OTRO";
@@ -101,12 +106,12 @@ export function parseAlegraTrans(buffer: Buffer): AlegraParseResult {
 
     const amount = parseNumber(row[cValor]);
     const metodo = String(cMetodo >= 0 ? (row[cMetodo] ?? "") : "");
-    const method = classify(cuenta, metodo);
 
     // Factura asociada: "Facturas: B33048" -> B33048 (da la tienda por prefijo)
     const asoc = String(cAsoc >= 0 ? (row[cAsoc] ?? "") : "");
     const mFact = asoc.match(/Facturas:\s*([A-Z]+\d+)/i);
     const factura = mFact ? mFact[1].toUpperCase() : "";
+    const method = classify(cuenta, metodo, factura);
 
     // Tienda: la cuenta de efectivo la trae explícita; si no, el prefijo
     const storeCode =
