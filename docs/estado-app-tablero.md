@@ -86,6 +86,15 @@ reclasificadas (#19–#25: 12-may $140.000, 13-may $160.438 y $193.500, 20-may $
 agosto B1 17-ago $224.600, B2 14-ago $161.700, B3 31-ago $54.750.** 4 transacciones Addi de Jardín Plaza
 (24-abr, 7/8/10-may) sin venta en el POS = JP aún era de NL.
 
+**BUG del motor corregido (applyAdjustments)**: al aceptar a mano un día de DATÁFONO o QR, el motor
+recalculaba `salesAmount` con el mapa de ventas en EFECTIVO → B2 8-may datáfono salía venta 387.000 y dif
+1.329.600 (real: 1.717.300 vs 1.716.600 = −700); los totales "MANUAL" de datáfono/QR en /resumen y en el
+cierre de mes estaban inflados (jul datáfono $6,58M → real −$3.870; QR $3,58M → $476.900). Ahora solo el
+EFECTIVO se recalcula por días; datáfono/QR conservan montos y solo quedan MANUAL con la nota. Además el
+modal del datáfono mostraba la dif con el signo invertido ("sobran 700" por "faltan 700") → corregido.
+Caso B2 8-may: fac B2193 $23.800 no está en el datáfono y hay una transacción de $23.100 VISA débito sin
+factura → se cobró 23.100 por una venta de 23.800: faltan $700 (aceptado el 27-ago como "diferencia menor").
+
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
 REAPLICA tras cada recarga de ventas (`aplicarOverrides()` al final de la ingesta en ledger.ts), así

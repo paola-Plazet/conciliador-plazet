@@ -621,6 +621,12 @@ function applyAdjustments(
   return results.map((r) => {
     const adj = adjMap.get(r.id);
     if (!adj) return r;
+    // Solo el EFECTIVO se recalcula por días de venta (el ajuste puede reagrupar
+    // días). El mapa salesByStoreDay es de ventas en EFECTIVO: aplicarlo a un
+    // resultado de DATÁFONO o QR ponía la venta de caja como venta de tarjeta
+    // (B2 8-may-2026: venta 387.000 y "dif" 1.329.600 en vez de −700). Esos
+    // canales conservan sus montos y solo quedan marcados MANUAL con la nota.
+    if (r.channel !== "EFECTIVO") return { ...r, status: "MANUAL", note: adj.note };
     const store = r.storeCode ?? "?";
     const dayMap = salesByStoreDay.get(store) ?? new Map();
     const sum = adj.salesDates.reduce((a, d) => a + (dayMap.get(d) ?? 0), 0);

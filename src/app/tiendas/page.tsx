@@ -810,7 +810,8 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
               <span>POS: <b>{cop(det.totales.pos)}</b>{det.devueltoDatafono !== 0 && <span className="text-gray-400"> (ya descontada la devolución por datáfono de {cop(-det.devueltoDatafono)} del cierre de caja)</span>}</span>
               <span>Datáfono: <b>{cop(det.totales.datafono)}</b></span>
-              <span className={difColor(det.totales.dif)}>{difTexto(det.totales.dif)}</span>
+              {/* difTexto espera el FALTANTE (+ = falta en el datáfono, − = sobra) */}
+              <span className={difColor(det.totales.pos - det.totales.datafono)}>{difTexto(det.totales.pos - det.totales.datafono)}</span>
               {sinCuadrar > 0 ? (
                 <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-700">{sinCuadrar} transacción{sinCuadrar > 1 ? "es" : ""} por revisar</span>
               ) : (
