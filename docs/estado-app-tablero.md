@@ -141,6 +141,17 @@ $716.975 (25 fac) vs depósito $684.275 del 1-jun (−32.700), pero el 30+31 ($1
 en efectivo (#677, $15.300) quedó fechado 29-may (pago tardío o re-fechado); 15.300 + 17.400 (B2941 o
 B2979) = 32.700 exactos.
 
+**Motor efectivo — "día robado"** (Paola: B3 19-may $247.600 consignado el 21-may): en el pase de
+respaldo, si una consignación POSTERIOR calza exacto con UN solo día del grupo que este depósito
+agruparía, ese día es de ella y se saca del grupo — solo si el grupo queda MEJOR sin él (|dif| menor),
+para no robar por coincidencia (`recordSingle` + bloque "Día robado" en `conciliarEfectivo`). Un primer
+intento en el pase exacto (saltar días) rompía 13–24 resultados en B1/B2 (huecos no contiguos calzaban
+por azar) → descartado. Verificado con `scripts/dump-efectivo.ts` antes/después: solo cambian B3 20-may
+(18 solo, falta $10.899, alerta QR Laura Acuña $11.000) y 21-may (19 CUADRA).
+**Datáfono, regla adicional de Paola**: pareja del MISMO día con diferencia mínima (≤ `APROX` = 1.000)
+cuenta solo la diferencia NETA (B2 8-may: falta $700, no 23.800/23.100); transacciones distintas siguen
+completas a cada lado (B3 28-jun: falta 53.400 · sobra 8.500).
+
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
 REAPLICA tras cada recarga de ventas (`aplicarOverrides()` al final de la ingesta en ledger.ts), así

@@ -889,7 +889,9 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
                         ) : Math.abs(m.difValor) > 50 ? (
                           <span className="font-medium text-red-600">
                             ⚠ {m.via === "aprox" ? "el datáfono tiene" : `aut. ${m.autorizacion ?? "?"} por`} <b>{cop(m.gross)}</b> ({m.difValor > 0 ? "+" : ""}{cop(m.difValor)}) · {tarjeta(m.franchise, m.cardType, m.ultimos4)}
-                            <span className="ml-1 font-normal text-gray-500">→ cuenta como falta {cop(p.amount)} y sobra {cop(m.gross)}</span>
+                            <span className="ml-1 font-normal text-gray-500">
+                              → {Math.abs(m.difValor) <= 1000 ? (m.difValor > 0 ? `sobra ${cop(m.difValor)}` : `falta ${cop(-m.difValor)}`) : `falta ${cop(p.amount)} y sobra ${cop(m.gross)}`}
+                            </span>
                           </span>
                         ) : (
                           <span className="text-plazet-700">

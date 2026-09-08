@@ -48,8 +48,10 @@ export interface CruceDatafono<P extends PosPago, T extends TxDatafono> {
 
 /** diferencia de redondeo que se considera "el mismo valor" */
 export const IGUAL = 50;
-/** hasta cuánto se empareja una transacción "parecida" solo para explicar (cuenta como falta + sobra) */
-export const APROX = 500;
+/** hasta cuánto se empareja una transacción "parecida" del MISMO día. Regla de Paola: si la
+ * diferencia es mínima cuenta solo la DIFERENCIA NETA (falta 700 por 23.800 vs 23.100), no las dos
+ * transacciones enteras; si son transacciones distintas, falta y sobra van completas por separado. */
+export const APROX = 1000;
 
 const r = (n: number) => Math.round(Math.abs(n));
 const auth = (a: string | null | undefined) => {
@@ -145,14 +147,24 @@ export function cruzarDatafono<P extends PosPago, T extends TxDatafono>(pos: P[]
   let falta = 0, sobra = 0;
   const distinto = (par: ParCruce<P, T>) => !esIgual(par.difValor);
   const montoTx = (par: ParCruce<P, T>) => r(par.tx.gross) + (par.tx2 ? r(par.tx2.gross) : 0);
-  // cobros: POS sin datáfono = falta; datáfono sin POS = sobra; pares con valor distinto = ambos lados
+  // cobros: POS sin datáfono = falta; datáfono sin POS = sobra.
+  // Pares con valor distinto: si la diferencia es mínima (≤ APROX, mismo día) cuenta solo la
+  // diferencia NETA; si es grande (mismo código de autorización pero otro monto) van ambos lados.
   for (const p of cobros.posSueltos) falta += p.amount;
   for (const t of cobros.txSueltas) sobra += t.gross;
-  for (const par of cobros.pares) if (distinto(par)) { falta += par.pos.amount; sobra += montoTx(par); }
+  for (const par of cobros.pares) {
+    if (!distinto(par)) continue;
+    if (Math.abs(par.difValor) <= APROX) { if (par.difValor > 0) sobra += par.difValor; else falta += -par.difValor; }
+    else { falta += par.pos.amount; sobra += montoTx(par); }
+  }
   // devoluciones: POS devolvió sin reversión en el datáfono = sobra; reversión sin POS = falta
   for (const p of devol.posSueltos) sobra += -p.amount;
   for (const t of devol.txSueltas) falta += -t.gross;
-  for (const par of devol.pares) if (distinto(par)) { sobra += r(par.pos.amount); falta += montoTx(par); }
+  for (const par of devol.pares) {
+    if (!distinto(par)) continue;
+    if (Math.abs(par.difValor) <= APROX) { if (par.difValor > 0) falta += par.difValor; else sobra += -par.difValor; }
+    else { sobra += r(par.pos.amount); falta += montoTx(par); }
+  }
   return {
     pares: [...cobros.pares, ...devol.pares],
     posSueltos: [...cobros.posSueltos, ...devol.posSueltos],
@@ -164,9 +176,13 @@ export function cruzarDatafono<P extends PosPago, T extends TxDatafono>(pos: P[]
 
 /** Texto corto del resultado del día ("Falta $X: 2 pago(s)… · Sobra $Y: 1 transacción…") */
 export function resumenCruce(c: CruceDatafono<PosPago, TxDatafono>, cop: (n: number) => string): string | undefined {
-  const distintos = c.pares.filter((p) => !esIgual(p.difValor)).length;
+  const parecidas = c.pares.filter((p) => !esIgual(p.difValor) && Math.abs(p.difValor) <= APROX);
+  const distintos = c.pares.filter((p) => Math.abs(p.difValor) > APROX).length;
   const partes: string[] = [];
-  if (c.falta > 0) partes.push(`Falta ${cop(c.falta)}: ${c.posSueltos.filter((p) => p.amount >= 0).length + distintos + c.txSueltas.filter((t) => t.gross < 0).length} pago(s) del POS sin transacción exacta en el datáfono`);
-  if (c.sobra > 0) partes.push(`Sobra ${cop(c.sobra)}: ${c.txSueltas.filter((t) => t.gross >= 0).length + distintos + c.posSueltos.filter((p) => p.amount < 0).length} transacción(es) del datáfono sin factura exacta en el POS`);
+  const nFalta = c.posSueltos.filter((p) => p.amount >= 0).length + distintos + c.txSueltas.filter((t) => t.gross < 0).length;
+  const nSobra = c.txSueltas.filter((t) => t.gross >= 0).length + distintos + c.posSueltos.filter((p) => p.amount < 0).length;
+  if (c.falta > 0) partes.push(`Falta ${cop(c.falta)}${nFalta ? `: ${nFalta} pago(s) del POS sin transacción en el datáfono` : ""}`);
+  if (c.sobra > 0) partes.push(`Sobra ${cop(c.sobra)}${nSobra ? `: ${nSobra} transacción(es) del datáfono sin factura en el POS` : ""}`);
+  if (parecidas.length) partes.push(`${parecidas.length} cobro(s) por un valor distinto al facturado (${parecidas.map((p) => `${cop(Math.abs(p.pos.amount))} vs ${cop(Math.abs(p.tx.gross) + (p.tx2 ? Math.abs(p.tx2.gross) : 0))}`).join(", ")})`);
   return partes.length ? partes.join(" · ") : undefined;
 }

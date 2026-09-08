@@ -168,6 +168,30 @@ function conciliarEfectivo(
       return null;
     };
 
+    // Registra el calce de UNA consignación con UN solo día de venta que no es
+    // el más antiguo pendiente (ver "día robado" en el pase de respaldo).
+    const recordSingle = (date: string, amount: number, dayIdx: number) => {
+      const day = salesDays[dayIdx];
+      const { expectedDate, daysLate } = computeLate([day.date], date, holidays);
+      results.push({
+        id: nextId(date),
+        channel: "EFECTIVO",
+        storeCode: store === "?" ? null : store,
+        storeName: storeName(store === "?" ? null : store),
+        method: "EFECTIVO",
+        depositDate: date,
+        depositAmount: amount,
+        salesDates: [day.date],
+        salesAmount: day.amount,
+        difference: amount - day.amount,
+        status: "CUADRA",
+        expectedDate,
+        daysLate,
+        late: daysLate > 0,
+      });
+      salesDays.splice(dayIdx, 1); // ese día ya quedó cubierto; los anteriores siguen pendientes
+    };
+
     const recordMatch = (
       date: string,
       amount: number,
@@ -258,6 +282,33 @@ function conciliarEfectivo(
       while (j < salesDays.length && salesDays[j].date < date) {
         available.push(salesDays[j]);
         j++;
+      }
+
+      // "Día robado": si una consignación POSTERIOR calza exacto con UN solo día
+      // de los que este depósito agruparía, ese día es de ella y se saca del
+      // grupo — pero solo si el grupo de este depósito queda MEJOR sin él (así no
+      // se roba por coincidencia). Caso real Unicentro Norte may-2026: 18-may
+      // $479.900 y 19-may $247.600; el 20 entró $469.001 y el 21 $247.600.
+      // Antes el 20 se "tragaba" 18+19 (dif −258.499) y el 21 quedaba sin nada.
+      if (available.length >= 2) {
+        const expectedSkip = new Set(expectedSalesDays(date, holidays));
+        let endSkip = -1;
+        for (let k = 0; k < available.length; k++) if (expectedSkip.has(available[k].date)) endSkip = k;
+        const grupo = endSkip >= 0 ? available.slice(0, endSkip + 1) : available.slice(0, Math.min(available.length, maxGroupDays));
+        const sumaGrupo = grupo.reduce((a, d) => a + d.amount, 0);
+        for (let a = 1; a < grupo.length; a++) {
+          const day = grupo[a];
+          const k = entries.findIndex(
+            (e, idx) => !done[idx] && e.date > date && within(e.amount, day.amount, tolerance) && businessDaysBetween(day.date, e.date, holidays) <= maxGroupDays,
+          );
+          if (k < 0) continue;
+          if (Math.abs(amount - (sumaGrupo - day.amount)) >= Math.abs(amount - sumaGrupo)) continue; // no mejora → no robar
+          const dayIdx = ptr + a; // available/grupo son contiguos desde ptr
+          recordSingle(entries[k].date, entries[k].amount, dayIdx);
+          done[k] = true;
+          available.splice(a, 1);
+          break; // uno por consignación; los demás se revisan en la siguiente vuelta
+        }
       }
 
       const baseResult = {
