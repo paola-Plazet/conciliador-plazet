@@ -86,7 +86,7 @@ interface DiaEfe {
   enPlazo?: boolean; // pendiente pero aún en plazo (se consigna al día hábil siguiente)
 }
 interface Dia {
-  date: string; efe: DiaEfe; tar: { venta: number; plink: number; dif: number; sinCargar: boolean };
+  date: string; efe: DiaEfe; tar: { venta: number; plink: number; dif: number; falta: number; sobra: number; sinCargar: boolean };
   qrVenta: number; qrBanco: number; qrDif: number; qrSinCargar: boolean;
   mercadopago: number; rappi: number; addi: number; otros: number;
 }
@@ -100,7 +100,7 @@ interface Totales {
   mercadopago: number; rappi: number; addi: number; otros: number;
 }
 interface ApiData {
-  months: string[]; month: string; stores: { code: string; name: string }[];
+  months: string[]; month: string; rango?: { from: string; to: string } | null; stores: { code: string; name: string }[];
   data: Record<string, { days: Dia[]; totales: Totales }>;
   qrEmpresa: { date: string; venta: number; banco: number; dif: number }[];
   qrResumen: { asignado: number; sinAsignar: number; revisar: { date: string; amount: number; payer: string; stores: string[] }[] };
@@ -155,6 +155,9 @@ function difTexto(faltante: number): string {
 export default function TiendasPage() {
   const [api, setApi] = useState<ApiData | null>(null);
   const [month, setMonth] = useState<string>("");
+  // rango libre de fechas (varios meses): si está activo manda sobre el mes
+  const [rango, setRango] = useState<{ from: string; to: string } | null>(null);
+  const [rangoForm, setRangoForm] = useState<{ from: string; to: string }>({ from: "", to: "" });
   const [store, setStore] = useState<string>("");
   const [canal, setCanal] = useState<Canal>("todo");
   const [loading, setLoading] = useState(true);
@@ -219,7 +222,7 @@ export default function TiendasPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/dashboard${month ? `?month=${month}` : ""}`)
+    fetch(`/api/dashboard${month ? `?month=${month}` : ""}${rango ? `${month ? "&" : "?"}from=${rango.from}&to=${rango.to}` : ""}`)
       .then((r) => r.json())
       .then((d: ApiData) => {
         setApi(d);
@@ -228,7 +231,7 @@ export default function TiendasPage() {
         setLoading(false);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, refresh]);
+  }, [month, refresh, rango]);
 
   // notas de revisión del mes
   useEffect(() => {
@@ -262,14 +265,40 @@ export default function TiendasPage() {
           <h1 className="text-2xl font-bold text-gray-900">Tiendas</h1>
           <p className="text-sm text-gray-500">Venta vs recaudo por canal, día a día</p>
         </div>
-        <select
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm"
-        >
-          {api.months.map((m) => <option key={m} value={m}>{mesLabel(m)}</option>)}
-        </select>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* mes (se desactiva cuando hay un rango libre) */}
+          <select
+            value={month}
+            disabled={!!rango}
+            onChange={(e) => setMonth(e.target.value)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-50"
+          >
+            {api.months.map((m) => <option key={m} value={m}>{mesLabel(m)}</option>)}
+          </select>
+          {/* rango libre de fechas: diferencias totales de varios meses */}
+          <span className="text-xs text-gray-500">o entre</span>
+          <input type="date" value={rangoForm.from} onChange={(e) => setRangoForm((f) => ({ ...f, from: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm shadow-sm" />
+          <span className="text-xs text-gray-500">y</span>
+          <input type="date" value={rangoForm.to} onChange={(e) => setRangoForm((f) => ({ ...f, to: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm shadow-sm" />
+          <button
+            disabled={!rangoForm.from || !rangoForm.to || rangoForm.from > rangoForm.to}
+            onClick={() => setRango({ from: rangoForm.from, to: rangoForm.to })}
+            className="rounded-lg bg-plazet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-plazet-700 disabled:opacity-50"
+          >
+            Ver período
+          </button>
+          {rango && (
+            <button onClick={() => { setRango(null); setRangoForm({ from: "", to: "" }); }} className="rounded-lg px-2 py-1.5 text-sm text-gray-500 hover:bg-gray-100">
+              ✕ volver al mes
+            </button>
+          )}
+        </div>
       </div>
+      {rango && (
+        <p className="mt-2 rounded-lg bg-plazet-50 px-3 py-1.5 text-xs text-plazet-800">
+          Mostrando el período del <b>{diaCorto(rango.from)}</b> al <b>{diaCorto(rango.to)}</b>: las tarjetas suman las diferencias de todos esos días.
+        </p>
+      )}
 
       {/* tiendas */}
       <div className="mt-5 flex flex-wrap gap-2">
@@ -780,11 +809,13 @@ function QrDetalleModal({ date, store, storeLabel, puedeGestionar, onCambio, onC
 /** Detalle del datáfono de un día: cada pago con tarjeta del POS contra cada
  * transacción del reporte Conciliar, para ver CUÁL es la que no cuadra. */
 function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: string; store: string; storeLabel: string; onClose: () => void }) {
-  interface Match { via: "autorizacion" | "valor+tarjeta" | "valor"; gross: number; net: number; franchise: string; cardType: string; ultimos4: string | null; autorizacion: string | null; difValor: number }
+  interface Match { via: "autorizacion" | "valor+tarjeta" | "valor" | "suma" | "aprox"; gross: number; net: number; franchise: string; cardType: string; ultimos4: string | null; autorizacion: string | null; difValor: number; tx2Gross: number | null; compartida: boolean }
   interface Det {
     pos: { id: number; invoice: string; hora: string | null; franquicia: string | null; tipo: string; ultimos4: string | null; autorizacion: string | null; amount: number; match: Match | null }[];
     sueltas: { id: number; franchise: string; cardType: string; gross: number; net: number; depositDate: string; autorizacion: string | null; ultimos4: string | null }[];
     devueltoDatafono: number;
+    falta: number;
+    sobra: number;
     totales: { pos: number; datafono: number; dif: number };
     tieneAutorizacion: boolean;
   }
@@ -810,8 +841,14 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
               <span>POS: <b>{cop(det.totales.pos)}</b>{det.devueltoDatafono !== 0 && <span className="text-gray-400"> (ya descontada la devolución por datáfono de {cop(-det.devueltoDatafono)} del cierre de caja)</span>}</span>
               <span>Datáfono: <b>{cop(det.totales.datafono)}</b></span>
-              {/* difTexto espera el FALTANTE (+ = falta en el datáfono, − = sobra) */}
-              <span className={difColor(det.totales.pos - det.totales.datafono)}>{difTexto(det.totales.pos - det.totales.datafono)}</span>
+              {det.falta === 0 && det.sobra === 0 ? (
+                <span className="text-plazet-700">cuadra</span>
+              ) : (
+                <>
+                  {det.falta > 0 && <span className="font-semibold text-red-600">falta {cop(det.falta)}</span>}
+                  {det.sobra > 0 && <span className="font-semibold text-amber-600">sobra {cop(det.sobra)}</span>}
+                </>
+              )}
               {sinCuadrar > 0 ? (
                 <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-700">{sinCuadrar} transacción{sinCuadrar > 1 ? "es" : ""} por revisar</span>
               ) : (
@@ -838,7 +875,7 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
                 {det.pos.length === 0 && <tr><td colSpan={6} className="py-3 text-gray-400">No hubo pagos con tarjeta en el POS ese día.</td></tr>}
                 {det.pos.map((p) => {
                   const m = p.match;
-                  const mal = !m || m.difValor !== 0;
+                  const mal = !m || Math.abs(m.difValor) > 50; // hasta 50 pesos = redondeo del reporte
                   return (
                     <tr key={p.id} className={`border-b border-gray-100 ${mal ? "bg-red-50/60" : ""}`}>
                       <td className="py-1.5 pr-2 font-medium text-gray-700">{p.invoice}</td>
@@ -849,14 +886,17 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
                       <td className="py-1.5 text-xs">
                         {!m ? (
                           <span className="font-medium text-red-600">✗ no está en el datáfono</span>
-                        ) : m.difValor !== 0 ? (
+                        ) : Math.abs(m.difValor) > 50 ? (
                           <span className="font-medium text-red-600">
-                            ⚠ aut. {m.autorizacion} por <b>{cop(m.gross)}</b> ({m.difValor > 0 ? "+" : ""}{cop(m.difValor)}) · {tarjeta(m.franchise, m.cardType, m.ultimos4)}
+                            ⚠ {m.via === "aprox" ? "el datáfono tiene" : `aut. ${m.autorizacion ?? "?"} por`} <b>{cop(m.gross)}</b> ({m.difValor > 0 ? "+" : ""}{cop(m.difValor)}) · {tarjeta(m.franchise, m.cardType, m.ultimos4)}
+                            <span className="ml-1 font-normal text-gray-500">→ cuenta como falta {cop(p.amount)} y sobra {cop(m.gross)}</span>
                           </span>
                         ) : (
                           <span className="text-plazet-700">
                             ✓ {cop(m.gross)} · {tarjeta(m.franchise, m.cardType, m.ultimos4)}
-                            <span className="ml-1 text-gray-400">({m.via === "autorizacion" ? `aut. ${m.autorizacion}` : m.via === "valor+tarjeta" ? "valor + tarjeta" : "solo valor"})</span>
+                            <span className="ml-1 text-gray-400">
+                              ({m.via === "autorizacion" ? `aut. ${m.autorizacion}` : m.via === "valor+tarjeta" ? "valor + tarjeta" : m.via === "suma" ? (m.compartida ? "un solo cobro para dos facturas" : `dos tarjetas: ${cop(m.gross - (m.tx2Gross ?? 0))} + ${cop(m.tx2Gross ?? 0)}`) : "solo valor"}{m.difValor !== 0 ? `, redondeo ${m.difValor > 0 ? "+" : ""}${m.difValor}` : ""})
+                            </span>
                           </span>
                         )}
                       </td>
@@ -1167,7 +1207,12 @@ function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: {
   const tonos: Estado[] = [];
   if (ver("efectivo") && mostrarDifEfe && (e.venta || e.deposito) && !efeEnPlazo)
     tonos.push(e.estado === "CUADRA" || e.estado === "MANUAL" ? "cuadra" : estadoDe(-e.dif));
-  if (ver("datafono") && (d.tar.venta || d.tar.plink) && !d.tar.sinCargar) tonos.push(estadoDe(d.tar.dif));
+  if (ver("datafono") && (d.tar.venta || d.tar.plink) && !d.tar.sinCargar) {
+    // datáfono: cruce exacto, falta y sobra por separado (nunca neteadas)
+    if (d.tar.falta > 0) tonos.push("falta");
+    if (d.tar.sobra > 0) tonos.push("sobra");
+    if (d.tar.falta === 0 && d.tar.sobra === 0) tonos.push("cuadra");
+  }
   if (ver("qr") && (d.qrVenta || d.qrBanco) && !d.qrSinCargar) tonos.push(estadoDe(d.qrDif));
   const hayEnPlazo = ver("efectivo") && efeEnPlazo;
   const haySinCargar = (ver("datafono") && d.tar.sinCargar) || (ver("qr") && d.qrSinCargar);
@@ -1228,8 +1273,16 @@ function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: {
       )}
       {ver("datafono") && <td className="px-3 py-2 text-right text-gray-600">{d.tar.sinCargar ? <span className="text-[11px] text-gray-400">📄</span> : d.tar.plink ? cop(d.tar.plink) : "—"}</td>}
       {ver("datafono") && (
-        <td className={`px-3 py-2 text-right ${d.tar.sinCargar ? "text-gray-400" : difColor(d.tar.dif)}`}>
-          {d.tar.sinCargar ? "sin cargar" : d.tar.venta || d.tar.plink ? difTexto(d.tar.dif) : "—"}
+        <td className={`px-3 py-2 text-right ${d.tar.sinCargar ? "text-gray-400" : ""}`}>
+          {d.tar.sinCargar ? "sin cargar"
+            : !(d.tar.venta || d.tar.plink) ? "—"
+            : d.tar.falta === 0 && d.tar.sobra === 0 ? <span className="text-plazet-700">cuadra</span>
+            : (
+              <span className="flex flex-col items-end leading-tight" title="Cruce exacto transacción por transacción: falta = registrado en el POS y no está en el datáfono; sobra = entró al datáfono sin factura">
+                {d.tar.falta > 0 && <span className="font-semibold text-red-600">falta {cop(d.tar.falta)}</span>}
+                {d.tar.sobra > 0 && <span className="font-semibold text-amber-600">sobra {cop(d.tar.sobra)}</span>}
+              </span>
+            )}
         </td>
       )}
       {ver("qr") && (

@@ -82,6 +82,9 @@ export interface ConciliationResult {
   difference: number; // depositAmount - salesAmount
   status: ConciliationStatus;
   note?: string;
+  // Solo DATAFONO (cruce exacto transacción por transacción, sin netear):
+  falta?: number; // registrado en el POS que NO entró al datáfono
+  sobra?: number; // entró al datáfono sin factura exacta en el POS
   // Control de oportunidad (solo canal EFECTIVO)
   expectedDate?: string; // día hábil en que se esperaba la consignación
   daysLate?: number; // días hábiles de atraso (0 = a tiempo)

@@ -19,9 +19,11 @@ interface Totales {
   sobra: number;
 }
 const vacio = (): Totales => ({ venta: 0, recaudo: 0, falta: 0, sobra: 0 });
-function acumula(t: Totales, venta: number, recaudo: number) {
+function acumula(t: Totales, venta: number, recaudo: number, exacto?: { falta: number; sobra: number }) {
   t.venta += venta;
   t.recaudo += recaudo;
+  // datáfono: falta y sobra del cruce exacto, SIN netear (regla de Paola)
+  if (exacto) { t.falta += exacto.falta; t.sobra += exacto.sobra; return; }
   const faltante = venta - recaudo;
   if (faltante > 0) t.falta += faltante;
   else t.sobra += -faltante;
@@ -63,11 +65,12 @@ export async function GET() {
     const recaudo = r.depositAmount;
     const venta = r.salesAmount;
     const metodo = r.channel === "EFECTIVO" ? "efectivo" : r.channel === "DATAFONO" ? "datafono" : "qr";
-    acumula(porMetodo[metodo], venta, recaudo);
+    const exacto = r.channel === "DATAFONO" && r.falta != null && r.sobra != null ? { falta: r.falta, sobra: r.sobra } : undefined;
+    acumula(porMetodo[metodo], venta, recaudo, exacto);
     const mes = r.month ?? r.depositDate.slice(0, 7);
-    acumula(mesOf(porMes, mes), venta, recaudo);
+    acumula(mesOf(porMes, mes), venta, recaudo, exacto);
     if ((r.channel === "EFECTIVO" || r.channel === "DATAFONO") && r.storeCode) {
-      acumula(mesOf(porTienda, r.storeCode), venta, recaudo);
+      acumula(mesOf(porTienda, r.storeCode), venta, recaudo, exacto);
     }
   }
 

@@ -1,3 +1,4 @@
+import { cruzarDatafono, resumenCruce } from "./datafono-cruce";
 // Motor de conciliación.
 //
 // Canal EFECTIVO (el difícil): las tiendas consignan el efectivo del día
@@ -389,6 +390,24 @@ function conciliarDatafono(
     (d) => d.txDate,
     (d) => d.gross,
   );
+  // Filas individuales por tienda/día para el cruce EXACTO transacción por transacción
+  const cardRows = new Map<string, Map<string, SaleInvoice[]>>();
+  for (const s of sales) {
+    if (s.method !== "TARJETA_CREDITO" && s.method !== "TARJETA_DEBITO") continue;
+    const st = s.storeCode ?? "?";
+    if (!cardRows.has(st)) cardRows.set(st, new Map());
+    const m = cardRows.get(st)!;
+    m.set(s.date, [...(m.get(s.date) ?? []), s]);
+  }
+  const dataRows = new Map<string, Map<string, DataphoneEntry[]>>();
+  for (const d of datafono) {
+    const st = d.storeCode ?? "?";
+    if (!dataRows.has(st)) dataRows.set(st, new Map());
+    const m = dataRows.get(st)!;
+    m.set(d.txDate, [...(m.get(d.txDate) ?? []), d]);
+  }
+  const cop = (n: number) => "$" + Math.round(n).toLocaleString("es-CO");
+  void tolerance; // el datáfono se cruza EXACTO (regla de Paola): sin tolerancia
 
   // Rangos de cobertura de cada fuente (para distinguir "fuera de rango")
   const dfDates = datafono.map((e) => e.txDate).sort();
@@ -449,15 +468,20 @@ function conciliarDatafono(
         continue;
       }
 
+      // Cruce EXACTO transacción por transacción (regla de Paola): lo del POS
+      // que no está en el datáfono es FALTA y lo del datáfono sin factura es
+      // SOBRA; no se netea. CUADRA solo si todo calza al peso.
+      const cruce = cruzarDatafono(
+        (cardRows.get(store)?.get(day) ?? []).map((s, i) => ({ id: `${s.invoice}#${i}`, amount: s.amount, autorizacion: s.autorizacion, ultimos4: s.ultimos4 })),
+        (dataRows.get(store)?.get(day) ?? []).map((d, i) => ({ id: `${d.terminal}#${i}`, gross: d.gross, autorizacion: d.autorizacion, ultimos4: d.ultimos4 })),
+      );
+      const exacto = cruce.falta === 0 && cruce.sobra === 0;
       results.push({
         ...base,
-        status: within(data, pos, tolerance) ? "CUADRA" : "DIFERENCIA",
-        note:
-          data === 0
-            ? "Venta con tarjeta en POS sin transacción en el datafono."
-            : pos === 0
-              ? "Transacción en datafono sin venta con tarjeta en el POS."
-              : undefined,
+        falta: cruce.falta,
+        sobra: cruce.sobra,
+        status: exacto ? "CUADRA" : "DIFERENCIA",
+        note: exacto ? undefined : resumenCruce(cruce, cop),
       });
     }
   }

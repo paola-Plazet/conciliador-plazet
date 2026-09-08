@@ -11,6 +11,7 @@ import { nextBusinessDay } from "@/lib/dates";
 import { STORES, storeName } from "@/lib/stores";
 import { CUENTAS_NO_QR, ALEGRA_CONFIABLE_HASTA } from "@/lib/alegra-api";
 import { QR_DIAS_ANTES } from "@/lib/qr-reglas";
+import { cruzarDatafono } from "@/lib/datafono-cruce";
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,10 @@ interface DiaEfe {
 
 export async function GET(request: NextRequest) {
   const month = request.nextUrl.searchParams.get("month");
+  // rango libre de fechas (opcional): ?from=YYYY-MM-DD&to=YYYY-MM-DD → diferencias totales de varios meses
+  const fromParam = request.nextUrl.searchParams.get("from");
+  const toParam = request.nextUrl.searchParams.get("to");
+  const esFecha = (s: string | null): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
   const [salesRows, dataRows, qrRows, mpRows, manualQr, alegraTransfers, ledger, holidaysArr] = await Promise.all([
     prisma.sale.findMany(),
@@ -45,10 +50,12 @@ export async function GET(request: NextRequest) {
 
   const monthsSet = new Set<string>(salesRows.map((s) => s.date.slice(0, 7)));
   const months = [...monthsSet].sort().reverse();
-  const m = month && monthsSet.has(month) ? month : months[0];
+  const rango = esFecha(fromParam) && esFecha(toParam) && fromParam <= toParam ? { from: fromParam, to: toParam } : null;
+  const m = rango ? rango.from.slice(0, 7) : month && monthsSet.has(month) ? month : months[0];
   if (!m) return Response.json({ months: [], stores: [], data: {} });
 
-  const inMonth = (d: string) => d.startsWith(m);
+  // "inMonth" = dentro del período visible: el mes elegido o el rango libre
+  const inMonth = (d: string) => (rango ? d >= rango.from && d <= rango.to : d.startsWith(m));
   const add = (map: Map<string, number>, k: string, v: number) => map.set(k, (map.get(k) ?? 0) + v);
 
   // clasifica un pago OTRO por plataforma según el texto de la bodega/cuenta
@@ -104,6 +111,19 @@ export async function GET(request: NextRequest) {
   // plink por (tienda, día)
   const plink = new Map<string, number>();
   for (const d of dataRows) if (d.storeCode && inMonth(d.txDate)) add(plink, `${d.storeCode}|${d.txDate}`, d.gross);
+  // filas individuales para el cruce EXACTO del datáfono (falta / sobra sin netear)
+  const tarFilas = new Map<string, { id: number; amount: number; autorizacion: string | null; ultimos4: string | null }[]>();
+  for (const s of salesRows) {
+    if (!s.storeCode || !inMonth(s.date) || (s.method !== "TARJETA_CREDITO" && s.method !== "TARJETA_DEBITO")) continue;
+    const k = `${s.storeCode}|${s.date}`;
+    tarFilas.set(k, [...(tarFilas.get(k) ?? []), { id: s.id, amount: s.amount, autorizacion: s.autorizacion, ultimos4: s.ultimos4 }]);
+  }
+  const datFilas = new Map<string, { id: number; gross: number; autorizacion: string | null; ultimos4: string | null }[]>();
+  for (const d of dataRows) {
+    if (!d.storeCode || !inMonth(d.txDate)) continue;
+    const k = `${d.storeCode}|${d.txDate}`;
+    datFilas.set(k, [...(datFilas.get(k) ?? []), { id: d.id, gross: d.gross, autorizacion: d.autorizacion, ultimos4: d.ultimos4 }]);
+  }
   // QR banco por día (empresa)
   const qrBanco = new Map<string, number>();
   for (const q of qrRows) if (inMonth(q.date)) add(qrBanco, q.date, q.amount);
@@ -254,6 +274,34 @@ export async function GET(request: NextRequest) {
     v.used = true;
   }
 
+  // PASE 3b — UN solo pago QR que cubre DOS o TRES facturas de la misma tienda
+  // (caso real: Nini Johana $224.600 = $224.000 + $600 en Plaza el 17-ago).
+  for (const [amount, arr] of bankByAmount) {
+    for (const p of arr) {
+      if (p.used) continue;
+      const porTienda = new Map<string, typeof qrSalesList>();
+      for (const v of qrSalesList) if (!v.used && distQr(p.date, v.date) >= 0) porTienda.set(v.store, [...(porTienda.get(v.store) ?? []), v]);
+      let combo: typeof qrSalesList | null = null;
+      for (const vs of porTienda.values()) {
+        for (let i = 0; i < vs.length && !combo; i++) {
+          for (let j = i + 1; j < vs.length && !combo; j++) {
+            if (Math.abs(vs[i].amount + vs[j].amount - amount) <= 500) { combo = [vs[i], vs[j]]; break; }
+            for (let k = j + 1; k < vs.length; k++) if (Math.abs(vs[i].amount + vs[j].amount + vs[k].amount - amount) <= 500) { combo = [vs[i], vs[j], vs[k]]; break; }
+          }
+        }
+        if (combo) break;
+      }
+      if (!combo) continue;
+      p.used = true;
+      for (const v of combo) {
+        v.used = true;
+        add(qrBancoTienda, v.store, v.amount);
+        add(qrBancoDia, `${v.store}|${v.date}`, v.amount);
+        qrAsignado += v.amount;
+      }
+    }
+  }
+
   // resultados EFECTIVO del mes → mapear al último día de venta que cubren.
   // Se incluye cualquier resultado cuyo depósito CUBRA días del mes visible,
   // aunque el depósito cierre en otro mes (efectivo de fin de mes que se
@@ -261,7 +309,9 @@ export async function GET(request: NextRequest) {
   const efeRes = new Map<string, DiaEfe>(); // `${store}|${fecha}`
   for (const r of ledger.summary.results) {
     if (r.channel !== "EFECTIVO" || !r.storeCode) continue;
-    const tocaMes = (r.month ?? r.depositDate.slice(0, 7)) === m || r.salesDates.some((d) => d.startsWith(m));
+    const tocaMes = rango
+      ? r.salesDates.some(inMonth) || inMonth(r.depositDate)
+      : (r.month ?? r.depositDate.slice(0, 7)) === m || r.salesDates.some((d) => d.startsWith(m));
     if (!tocaMes) continue;
     const dias = [...r.salesDates].sort();
     const cierre = dias[dias.length - 1] ?? r.depositDate;
@@ -303,6 +353,7 @@ export async function GET(request: NextRequest) {
       else efe = { venta: 0, deposito: null, depositoFecha: null, grupo: [], dif: 0, estado: "SIN_VENTA" };
       const tarVenta = tarV.get(k) ?? 0;
       const tarPlink = plink.get(k) ?? 0;
+      const tarCruce = cruzarDatafono(tarFilas.get(k) ?? [], datFilas.get(k) ?? []);
       const qrVentaDia = qrV.get(k) ?? 0;
       const qrBancoDiaVal = qrBancoDia.get(k) ?? 0;
       // "EN PLAZO" (solo efectivo): la consignación se hace el día hábil
@@ -320,7 +371,8 @@ export async function GET(request: NextRequest) {
       return {
         date,
         efe,
-        tar: { venta: tarVenta, plink: tarPlink, dif: tarVenta - tarPlink, sinCargar: tarSinCargar },
+        // dif = neto (referencia); falta/sobra = cruce exacto sin netear (lo que se muestra)
+        tar: { venta: tarVenta, plink: tarPlink, dif: tarVenta - tarPlink, falta: tarCruce.falta, sobra: tarCruce.sobra, sinCargar: tarSinCargar },
         qrVenta: qrVentaDia,
         qrBanco: qrBancoDiaVal,
         qrDif: qrVentaDia - qrBancoDiaVal, // + = falta en banco, − = sobra
@@ -341,7 +393,6 @@ export async function GET(request: NextRequest) {
     // ya viene en ese sentido).
     const faltanteEfeDia = (d: (typeof days)[number]) =>
       d.efe.estado === "AGRUPADO" || (d.efe.estado === "PENDIENTE" && d.efe.enPlazo) ? 0 : -d.efe.dif;
-    const faltanteTarDia = (d: (typeof days)[number]) => (d.tar.sinCargar ? 0 : d.tar.dif);
     const faltanteQrDia = (d: (typeof days)[number]) => (d.qrSinCargar ? 0 : d.qrDif);
     const totalFalta = (f: (d: (typeof days)[number]) => number) => days.reduce((a, d) => a + Math.max(0, f(d)), 0);
     const totalSobra = (f: (d: (typeof days)[number]) => number) => days.reduce((a, d) => a + Math.max(0, -f(d)), 0);
@@ -361,8 +412,9 @@ export async function GET(request: NextRequest) {
         tarPlink: sum((d) => d.tar.plink),
         tarDif: sum((d) => (d.tar.sinCargar ? 0 : d.tar.dif)),
         tarSinCargar: sum((d) => (d.tar.sinCargar ? d.tar.venta : 0)),
-        tarFaltaTotal: totalFalta(faltanteTarDia),
-        tarSobraTotal: totalSobra(faltanteTarDia),
+        // datáfono: falta y sobra del cruce exacto, sin netear entre sí
+        tarFaltaTotal: sum((d) => (d.tar.sinCargar ? 0 : d.tar.falta)),
+        tarSobraTotal: sum((d) => (d.tar.sinCargar ? 0 : d.tar.sobra)),
         qrVenta: sum((d) => d.qrVenta),
         qrBanco: qrBancoTienda.get(st.code) ?? 0, // banco QR asignado por valor
         qrSinCargar: sum((d) => (d.qrSinCargar ? d.qrVenta : 0)),
@@ -410,6 +462,7 @@ export async function GET(request: NextRequest) {
   return Response.json({
     months,
     month: m,
+    rango,
     stores: stores.map((s) => ({ ...s, name: storeName(s.code) })),
     data,
     qrEmpresa,

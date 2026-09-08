@@ -95,6 +95,30 @@ modal del datáfono mostraba la dif con el signo invertido ("sobran 700" por "fa
 Caso B2 8-may: fac B2193 $23.800 no está en el datáfono y hay una transacción de $23.100 VISA débito sin
 factura → se cobró 23.100 por una venta de 23.800: faltan $700 (aceptado el 27-ago como "diferencia menor").
 
+**DATÁFONO = CRUCE EXACTO SIN NETEAR (regla de Paola, noche del 07-sep)** — "no me cruces valores tan
+distintos; si entró al datáfono y no está en el sistema SOBRA, si está registrado y no está en el datáfono
+FALTA". `src/lib/datafono-cruce.ts` (`cruzarDatafono`) es el ÚNICO cruce, usado por el motor
+(`conciliarDatafono`), el tablero (`tar.falta`/`tar.sobra` por día y `tarFaltaTotal`/`tarSobraTotal`) y el
+modal (`/api/datafono-dia`): pases autorización → tarjeta+autorización prefijo → valor+tarjeta → valor
+(≤ `IGUAL`=50 pesos de redondeo: Conciliar trae 874.198 por 874.200) → **suma** (una factura con DOS
+tarjetas / dos facturas en UN cobro) → **aprox** (≤500, solo para explicar; cuenta falta+sobra). Lo del
+POS sin transacción = falta; lo del datáfono sin factura = sobra; pares con valor distinto = ambos lados;
+devoluciones (negativos) se cruzan entre sí (devolución POS sin reversión = sobra; reversión sin POS =
+falta). CUADRA solo si falta=sobra=0 (ya no hay tolerancia ±500 en el datáfono). `ConciliationResult`
+tiene `falta`/`sobra`; `/resumen` los suma sin netear. `difference` sigue siendo el neto (referencia).
+Efecto: B3 28-jun "falta $53.400 · sobra $8.500" (antes neto −44.900); B3 2-sep falta $65.400 · sobra
+$65.900. Datáfono con DIFERENCIA: may 5 · jun 8 · jul 3 · ago 6 (`scripts/datafono-exacto-check.ts`).
+La tabla de tiendas muestra "falta X" y "sobra Y" en dos líneas cuando hay ambos.
+
+**Tablero por RANGO de fechas** (pedido de Paola): `/api/dashboard?from=YYYY-MM-DD&to=YYYY-MM-DD` (manda
+sobre `month`; `inMonth` = dentro del rango; devuelve `rango`). En /tiendas: dos inputs de fecha + "Ver
+período" junto al selector de mes (que se desactiva) + "✕ volver al mes"; las tarjetas suman las
+diferencias de todos los días del período.
+
+**QR: un solo pago cubre varias facturas** (PASE 3b del cruce QR + en `/api/qr-dia`): Nini Johana
+$224.600 = facturas 5619 $224.000 + 5632 $600 en Plaza el 17-ago → Plaza agosto QR = 0. Quedan: B2 5-jul
+$107.700, B2 14-ago $161.700, B3 31-ago $54.750.
+
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
 REAPLICA tras cada recarga de ventas (`aplicarOverrides()` al final de la ingesta en ledger.ts), así

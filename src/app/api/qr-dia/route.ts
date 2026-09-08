@@ -82,6 +82,21 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  // UN solo pago QR que cubre DOS facturas de la misma tienda (Nini Johana 224.600 = 224.000 + 600)
+  const sinPago = out.filter((o) => !o.pago);
+  for (let i = 0; i < sinPago.length; i++) {
+    for (let j = i + 1; j < sinPago.length; j++) {
+      const a = sinPago[i], b = sinPago[j];
+      if (a.pago || b.pago || a.store !== b.store) continue;
+      const p = pagos.find((x) => !usados.has(x.id) && Math.abs(x.amount - (a.amount + b.amount)) <= 500);
+      if (!p) continue;
+      usados.add(p.id);
+      const compartido = { date: p.date, amount: p.amount, payer: `${p.payer} (un solo pago cubre ${a.invoice} + ${b.invoice})` };
+      a.pago = compartido;
+      b.pago = compartido;
+    }
+  }
+
   return NextResponse.json({
     date,
     facturas: out,

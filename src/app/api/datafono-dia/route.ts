@@ -1,52 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { cruzarDatafono } from "@/lib/datafono-cruce";
 
 export const runtime = "nodejs";
 
 /** Detalle DATÁFONO de UN día y UNA tienda, transacción por transacción:
  * cada pago con tarjeta del POS (Karrot trae franquicia, crédito/débito,
  * últimos 4 dígitos y código de autorización) contra cada transacción del
- * reporte Conciliar. Cruce en tres pases, en orden:
- *   1. mismo código de AUTORIZACIÓN (aunque el valor difiera → ESA es la que no cuadra),
- *   2. mismo valor + mismos 4 dígitos,
- *   3. mismo valor.
- * Lo que queda suelto a cada lado es la transacción que falta o sobra. */
+ * reporte Conciliar. Cruce EXACTO (src/lib/datafono-cruce.ts): lo del POS que
+ * no está en el datáfono es FALTA, lo del datáfono sin factura es SOBRA; no
+ * se netea. Las devoluciones registradas en el POS (montos negativos) se
+ * cruzan contra reversiones del datáfono. */
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date") ?? "";
   const store = req.nextUrl.searchParams.get("store") ?? "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !store) {
     return NextResponse.json({ error: "Parámetros date (YYYY-MM-DD) y store requeridos." }, { status: 400 });
   }
-  const [ventas, trans, devoluciones] = await Promise.all([
+  const [ventas, trans] = await Promise.all([
     prisma.sale.findMany({
-      where: { date, storeCode: store, method: { in: ["TARJETA_CREDITO", "TARJETA_DEBITO"] }, source: { not: "karrot_devolucion" } },
+      where: { date, storeCode: store, method: { in: ["TARJETA_CREDITO", "TARJETA_DEBITO"] } },
       orderBy: [{ hora: "asc" }, { invoice: "asc" }, { id: "asc" }],
     }),
     prisma.dataphoneEntry.findMany({ where: { txDate: date, storeCode: store }, orderBy: { id: "asc" } }),
-    // devoluciones por datáfono registradas en el cierre de caja de Karrot (negativas)
-    prisma.sale.findMany({ where: { date, storeCode: store, source: "karrot_devolucion", method: { in: ["TARJETA_CREDITO", "TARJETA_DEBITO"] } } }),
   ]);
-  const devueltoDatafono = devoluciones.reduce((s, d) => s + d.amount, 0);
 
-  const auth = (a: string | null | undefined) => {
-    const s = (a ?? "").trim();
-    if (!s) return "";
-    return /^\d+$/.test(s) ? String(Number(s)) : s.toUpperCase(); // "012345" ≡ "12345"
-  };
-  const r = (n: number) => Math.round(n);
-
-  interface Trans {
-    id: number;
-    franchise: string;
-    cardType: string;
-    gross: number;
-    net: number;
-    depositDate: string;
-    autorizacion: string | null;
-    ultimos4: string | null;
-    used: boolean;
-  }
-  const tx: Trans[] = trans.map((t) => ({
+  const posIn = ventas.map((v) => ({
+    id: v.id,
+    invoice: v.source === "karrot_devolucion" ? "devolución" : v.invoice,
+    hora: v.hora,
+    franquicia: v.franquicia,
+    tipo: v.method === "TARJETA_CREDITO" ? "CR" : "DB",
+    ultimos4: v.ultimos4,
+    autorizacion: v.autorizacion,
+    amount: v.amount,
+    esDevolucion: v.source === "karrot_devolucion",
+  }));
+  const txIn = trans.map((t) => ({
     id: t.id,
     franchise: t.franchise,
     cardType: t.cardType,
@@ -55,82 +45,45 @@ export async function GET(req: NextRequest) {
     depositDate: t.depositDate,
     autorizacion: t.autorizacion,
     ultimos4: t.ultimos4,
-    used: false,
   }));
+  const cruce = cruzarDatafono(posIn, txIn);
+  const parPorPos = new Map(cruce.pares.map((p) => [p.pos.id, p]));
 
-  type Via = "autorizacion" | "valor+tarjeta" | "valor";
-  const pos = ventas.map((v) => ({
-    id: v.id,
-    invoice: v.invoice,
-    hora: v.hora,
-    franquicia: v.franquicia,
-    tipo: v.method === "TARJETA_CREDITO" ? "CR" : "DB",
-    ultimos4: v.ultimos4,
-    autorizacion: v.autorizacion,
-    amount: v.amount,
-    match: null as null | { via: Via; gross: number; net: number; franchise: string; cardType: string; ultimos4: string | null; autorizacion: string | null; difValor: number },
-  }));
-
-  const asignar = (p: (typeof pos)[number], t: Trans, via: Via) => {
-    t.used = true;
-    p.match = {
-      via,
-      gross: t.gross,
-      net: t.net,
-      franchise: t.franchise,
-      cardType: t.cardType,
-      ultimos4: t.ultimos4,
-      autorizacion: t.autorizacion,
-      difValor: r(t.gross) - r(p.amount),
+  const pos = posIn.map((p) => {
+    const par = parPorPos.get(p.id);
+    return {
+      ...p,
+      match: par
+        ? {
+            via: par.via,
+            // con dos tarjetas, gross = suma de las dos transacciones
+            gross: par.tx.gross + (par.tx2?.gross ?? 0),
+            tx2Gross: par.tx2?.gross ?? null,
+            compartida: !!par.compartida,
+            net: par.tx.net + (par.tx2?.net ?? 0),
+            franchise: par.tx.franchise, cardType: par.tx.cardType, ultimos4: par.tx.ultimos4, autorizacion: par.tx.autorizacion,
+            difValor: par.difValor,
+          }
+        : null,
     };
-  };
-  // pase 1: autorización
-  for (const p of pos) {
-    const a = auth(p.autorizacion);
-    if (!a) continue;
-    const t = tx.find((x) => !x.used && auth(x.autorizacion) === a);
-    if (t) asignar(p, t, "autorizacion");
-  }
-  // pase 1b: misma tarjeta (últimos 4) y autorización "parecida" (una es prefijo
-  // de la otra: en el POS a veces se digita incompleta, ej. 98898 vs 988984) →
-  // es la MISMA transacción; si el valor difiere, esa es la que no cuadra.
-  for (const p of pos) {
-    const a = auth(p.autorizacion);
-    if (p.match || !a || a.length < 4 || !p.ultimos4) continue;
-    const t = tx.find((x) => {
-      if (x.used || x.ultimos4 !== p.ultimos4) return false;
-      const b = auth(x.autorizacion);
-      return b.length >= 4 && (b.startsWith(a) || a.startsWith(b));
-    });
-    if (t) asignar(p, t, "autorizacion");
-  }
-  // pase 2: valor + últimos 4
-  for (const p of pos) {
-    if (p.match || !p.ultimos4) continue;
-    const t = tx.find((x) => !x.used && r(x.gross) === r(p.amount) && x.ultimos4 === p.ultimos4);
-    if (t) asignar(p, t, "valor+tarjeta");
-  }
-  // pase 3: valor
-  for (const p of pos) {
-    if (p.match) continue;
-    const t = tx.find((x) => !x.used && r(x.gross) === r(p.amount));
-    if (t) asignar(p, t, "valor");
-  }
-
-  const sueltas = tx.filter((t) => !t.used).map(({ used: _u, ...t }) => t);
-  const totalPos = pos.reduce((s, p) => s + p.amount, 0) + devueltoDatafono; // neto de devoluciones
-  const totalDat = tx.reduce((s, t) => s + t.gross, 0);
-  const conAuth = pos.filter((p) => p.autorizacion).length;
+  });
+  const sueltas = cruce.txSueltas;
+  const devueltoDatafono = posIn.filter((p) => p.esDevolucion).reduce((s, p) => s + p.amount, 0);
+  const totalPos = posIn.reduce((s, p) => s + p.amount, 0);
+  const totalDat = txIn.reduce((s, t) => s + t.gross, 0);
 
   return NextResponse.json({
     date,
     store,
     pos,
     sueltas,
-    /** devoluciones por datáfono del cierre de caja (negativo o 0): ya restadas de totales.pos */
+    /** devoluciones por datáfono del cierre de caja (negativo o 0), incluidas en totales.pos */
     devueltoDatafono,
+    /** cruce exacto sin netear */
+    falta: cruce.falta,
+    sobra: cruce.sobra,
     totales: { pos: totalPos, datafono: totalDat, dif: totalDat - totalPos },
     /** el POS de esa fecha trae códigos de autorización (formato Karrot nuevo) */
-    tieneAutorizacion: conAuth > 0,
+    tieneAutorizacion: posIn.some((p) => p.autorizacion),
   });
 }
