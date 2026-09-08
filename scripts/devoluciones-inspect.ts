@@ -1,0 +1,18 @@
+import fs from "node:fs";
+import * as XLSX from "xlsx";
+const f = "C:/Users/Paola Agreda/Downloads/Alegra - devoluciones desde 01_04_2026 - hasta 08_07_2026.csv";
+const buf = fs.readFileSync(f);
+console.log("primeros bytes:", [...buf.subarray(0, 8)].map((b) => b.toString(16)).join(" "));
+let text = buf.toString("utf8");
+if (buf[0] === 0xff && buf[1] === 0xfe) text = buf.toString("utf16le");
+else if (!/^[\x00-\x7f]*$/.test(text.slice(0, 200)) && text.includes("\ufffd")) text = buf.toString("latin1");
+const lines = text.split(/\r?\n/).filter((l) => l.trim());
+console.log("líneas:", lines.length, "| sep ; =", (lines[0].match(/;/g) ?? []).length, "| sep , =", (lines[0].match(/,/g) ?? []).length);
+console.log("HEADER:", lines[0].slice(0, 600));
+console.log("FILA1:", lines[1]?.slice(0, 600));
+console.log("FILA2:", lines[2]?.slice(0, 600));
+const wb = XLSX.read(buf, { type: "buffer", raw: false, codepage: 65001 });
+const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[wb.SheetNames[0]], { raw: false, defval: "" });
+console.log("cols:", Object.keys(rows[0] ?? {}).join(" | "));
+console.log("filas:", rows.length);
+for (const r of rows.slice(0, 3)) console.log(JSON.stringify(r).slice(0, 500));

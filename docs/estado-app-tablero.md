@@ -127,6 +127,20 @@ $87.550 + $250 efectivo, pero la plata sí se consignó ($105.050 el 5-ago, ref 
 antes sin tienda). Override #26: 3774 Bono → **Efectivo** (`PLATAFORMAS` ahora incluye "Efectivo" y "QR
 Bancolombia" = métodos reales; `destino()` en overrides.ts). JP 3/4/5-ago CUADRA.
 
+**Notas crédito de ALEGRA** (`Downloads/Alegra - devoluciones desde 01_04_2026 - hasta 08_07_2026.csv`,
+UTF-8, primera línea `sep=;`, una fila por ÍTEM; "TOTAL - NOTA" viene SIN IVA → total real = suma de
+"ÍTEM - TOTAL"; `scripts/cargar-nc-alegra.ts` → `CreditNote` con ncId `alegra-N`): 41 NC abr–jul. **40 son
+"Anulación del documento" = factura anulada cuyo pago YA no aparece como ingreso en el reporte de
+transacciones** (verificado: ninguna de esas facturas está en Sale) → no hay nada que restar. Solo NC19
+(13-jun, B2, devolución PARCIAL $32.450 de la factura B21018 $72.200 efectivo del 14-jun) afecta plata:
+no se aplicó (el faltante del grupo 13–15 jun $104.700 calza con un QR de Deyson Herrera $104.880) →
+nota 📝 en B2 14-jun. El reporte de transacciones NO trae devoluciones (los "no Ingreso" son egresos a
+proveedores/nómina). **B2 29-may** (Paola: "716.000 vs 684.274"): no es NC. Ventas efectivo 29-may
+$716.975 (25 fac) vs depósito $684.275 del 1-jun (−32.700), pero el 30+31 ($1.583.201) recibió $1.687.849
+(+104.648); el grupo 29–31 cierra con SOBRA $71.948. Pista: la factura **B2182 es del 8-may** y su pago
+en efectivo (#677, $15.300) quedó fechado 29-may (pago tardío o re-fechado); 15.300 + 17.400 (B2941 o
+B2979) = 32.700 exactos.
+
 **RECLASIFICACIÓN MANUAL — `SaleOverride`** (`src/lib/overrides.ts`): "esta factura no fue QR, fue
 Rappi/Addi/…" → se aplica sobre la fila Sale (method OTRO, bodega "<bodega> · <plataforma>") y se
 REAPLICA tras cada recarga de ventas (`aplicarOverrides()` al final de la ingesta en ledger.ts), así
