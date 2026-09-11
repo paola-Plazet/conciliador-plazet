@@ -8,6 +8,11 @@ export interface StoreDef {
   establishment: string; // CODIGO ESTABLECIMIENTO del datafono
   terminalVisa: string;
   terminalMaster: string;
+  /** Modalidad de recaudo. Sin valor = la tienda consigna su efectivo y tiene
+   * datáfono propio. CENTRO_COMERCIAL = la caja es del centro comercial: él
+   * recauda efectivo + datáfono, corta cada 10 días y paga 2-3 días hábiles
+   * después (ver centro-comercial.ts). El QR sí entra a Bancolombia. */
+  recaudo?: "CENTRO_COMERCIAL";
 }
 
 export const STORES: StoreDef[] = [
@@ -51,6 +56,27 @@ export const STORES: StoreDef[] = [
     terminalVisa: "BI3R1",
     terminalMaster: "000BI3R1",
   },
+  // Floresta (Bogotá), abiertas en sep-2026: la caja es del centro comercial.
+  // Sin datáfono propio ni referencia de consignación. Códigos = "Código
+  // Almacén" de Karrot (B4 = burbuja, B5 = local).
+  {
+    code: "B4",
+    name: "Floresta Burbuja",
+    alegraBodega: "PLAZET BURBUJA FLORESTA",
+    establishment: "",
+    terminalVisa: "",
+    terminalMaster: "",
+    recaudo: "CENTRO_COMERCIAL",
+  },
+  {
+    code: "B5",
+    name: "Floresta",
+    alegraBodega: "PLAZET FLORESTA",
+    establishment: "",
+    terminalVisa: "",
+    terminalMaster: "",
+    recaudo: "CENTRO_COMERCIAL",
+  },
 ];
 
 /** Normaliza texto: mayúsculas, sin acentos, sin espacios extra */
@@ -67,7 +93,7 @@ const BODEGA_INDEX = new Map(
   STORES.map((s) => [normalize(s.alegraBodega), s.code]),
 );
 const ESTABLISHMENT_INDEX = new Map(
-  STORES.map((s) => [s.establishment, s.code]),
+  STORES.filter((s) => s.establishment).map((s) => [s.establishment, s.code]),
 );
 
 /** Resuelve el código de tienda a partir de la bodega de Alegra */
@@ -99,6 +125,8 @@ const PREFIX_INDEX = new Map<string, string>([
   ["B2", "B2"],
   ["B3", "B3"],
   ["C1", "JP"],
+  ["B4", "B4"],
+  ["B5", "B5"],
 ]);
 
 /** Resuelve tienda a partir del número de factura (p.ej. "B33048" -> B3).
@@ -118,3 +146,10 @@ export function storeName(code: string | null): string {
   if (!code) return "Sin asignar";
   return STORES.find((s) => s.code === code)?.name ?? code;
 }
+
+/** ¿El efectivo y el datáfono de esta tienda los recauda el CENTRO COMERCIAL
+ * (cortes cada 10 días)? Ver centro-comercial.ts */
+export function esCentroComercial(code: string | null | undefined): boolean {
+  return !!code && STORES.some((s) => s.code === code && s.recaudo === "CENTRO_COMERCIAL");
+}
+

@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { computeLedger } from "@/lib/ledger";
 import { loadHolidays } from "@/lib/process";
 import { nextBusinessDay } from "@/lib/dates";
-import { STORES, storeName } from "@/lib/stores";
+import { STORES, storeName, esCentroComercial } from "@/lib/stores";
 import { CUENTAS_NO_QR, ALEGRA_CONFIABLE_HASTA } from "@/lib/alegra-api";
 import { QR_DIAS_ANTES } from "@/lib/qr-reglas";
 import { cruzarDatafono } from "@/lib/datafono-cruce";
@@ -21,7 +21,7 @@ interface DiaEfe {
   depositoFecha: string | null;
   grupo: string[]; // días de venta que cubre ese depósito
   dif: number; // dif del grupo (en el día de cierre) o -venta si pendiente
-  estado: "CUADRA" | "DIFERENCIA" | "SIN_CONCILIAR" | "MANUAL" | "AGRUPADO" | "PENDIENTE" | "SIN_VENTA";
+  estado: "CUADRA" | "DIFERENCIA" | "SIN_CONCILIAR" | "MANUAL" | "AGRUPADO" | "PENDIENTE" | "SIN_VENTA" | "CENTRO_COMERCIAL";
   late?: boolean;
   qrAlert?: boolean;
   nota?: string;
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   const toParam = request.nextUrl.searchParams.get("to");
   const esFecha = (s: string | null): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
-  const [salesRows, dataRows, qrRows, mpRows, manualQr, alegraTransfers, ledger, holidaysArr] = await Promise.all([
+  const [salesRows, dataRows, qrRowsAll, mpRows, manualQr, alegraTransfers, ledger, holidaysArr] = await Promise.all([
     prisma.sale.findMany(),
     prisma.dataphoneEntry.findMany(),
     prisma.qrEntry.findMany(),
@@ -47,6 +47,12 @@ export async function GET(request: NextRequest) {
     loadHolidays(),
   ]);
   const holidays = new Set(holidaysArr);
+  // Abonos de Bancolombia que resultaron ser pagos del CENTRO COMERCIAL
+  // (Floresta): no son QR de clientes, se sacan del cruce QR
+  const usadoCC = new Set(
+    ledger.summary.pagosCC.filter((p) => p.cuenta === "BANCOLOMBIA").map((p) => `${p.date}|${Math.round(p.amount)}|${p.concept}`),
+  );
+  const qrRows = qrRowsAll.filter((q) => !usadoCC.has(`${q.date}|${Math.round(q.amount)}|${q.concept}`));
 
   const monthsSet = new Set<string>(salesRows.map((s) => s.date.slice(0, 7)));
   const months = [...monthsSet].sort().reverse();
@@ -336,7 +342,7 @@ export async function GET(request: NextRequest) {
   }
 
   // armar días por tienda
-  const stores = STORES.filter((s) => s.code !== "PRIN").map((s) => ({ code: s.code, name: s.name }));
+  const stores = STORES.filter((s) => s.code !== "PRIN").map((s) => ({ code: s.code, name: s.name, recaudo: s.recaudo ?? null }));
   const data: Record<string, unknown> = {};
   for (const st of stores) {
     const fechas = new Set<string>();
@@ -351,6 +357,10 @@ export async function GET(request: NextRequest) {
       if (res) efe = { ...res, venta };
       else if (venta > 0) efe = { venta, deposito: null, depositoFecha: null, grupo: [], dif: -venta, estado: "PENDIENTE" };
       else efe = { venta: 0, deposito: null, depositoFecha: null, grupo: [], dif: 0, estado: "SIN_VENTA" };
+      // centro comercial: ni consignación diaria ni datáfono propio → el día
+      // solo informa la venta; el cuadre está en los cortes de 10 días
+      const cc = esCentroComercial(st.code);
+      if (cc) efe = { venta, deposito: null, depositoFecha: null, grupo: [], dif: 0, estado: "CENTRO_COMERCIAL" };
       const tarVenta = tarV.get(k) ?? 0;
       const tarPlink = plink.get(k) ?? 0;
       const tarCruce = cruzarDatafono(tarFilas.get(k) ?? [], datFilas.get(k) ?? []);
@@ -372,7 +382,9 @@ export async function GET(request: NextRequest) {
         date,
         efe,
         // dif = neto (referencia); falta/sobra = cruce exacto sin netear (lo que se muestra)
-        tar: { venta: tarVenta, plink: tarPlink, dif: tarVenta - tarPlink, falta: tarCruce.falta, sobra: tarCruce.sobra, sinCargar: tarSinCargar },
+        tar: cc
+          ? { venta: tarVenta, plink: 0, dif: 0, falta: 0, sobra: 0, sinCargar: false, cc: true }
+          : { venta: tarVenta, plink: tarPlink, dif: tarVenta - tarPlink, falta: tarCruce.falta, sobra: tarCruce.sobra, sinCargar: tarSinCargar, cc: false },
         qrVenta: qrVentaDia,
         qrBanco: qrBancoDiaVal,
         qrDif: qrVentaDia - qrBancoDiaVal, // + = falta en banco, − = sobra
@@ -397,9 +409,25 @@ export async function GET(request: NextRequest) {
     const totalFalta = (f: (d: (typeof days)[number]) => number) => days.reduce((a, d) => a + Math.max(0, f(d)), 0);
     const totalSobra = (f: (d: (typeof days)[number]) => number) => days.reduce((a, d) => a + Math.max(0, -f(d)), 0);
 
+    // cortes del CENTRO COMERCIAL de la tienda que tocan el período visible
+    const esCC = esCentroComercial(st.code);
+    const cortes = esCC ? ledger.summary.cortesCC.filter((c) => c.storeCode === st.code && (inMonth(c.desde) || inMonth(c.hasta))) : [];
+    const ccTot = esCC
+      ? {
+          venta: cortes.reduce((a, c) => a + c.total, 0),
+          efectivo: cortes.reduce((a, c) => a + c.ventaEfectivo, 0),
+          datafono: cortes.reduce((a, c) => a + c.ventaDatafono, 0),
+          pagado: cortes.reduce((a, c) => a + (c.pago?.amount ?? 0), 0),
+          enPlazo: cortes.filter((c) => c.estado === "EN_PLAZO").reduce((a, c) => a + c.total, 0),
+          vencido: cortes.filter((c) => c.estado === "VENCIDO").reduce((a, c) => a + c.total, 0),
+          dif: cortes.filter((c) => c.pago).reduce((a, c) => a + c.dif, 0),
+        }
+      : null;
     data[st.code] = {
       days,
+      cortes: esCC ? cortes : undefined,
       totales: {
+        cc: ccTot,
         efeVenta: sum((d) => d.efe.venta),
         efeDepositado: sum((d) => d.efe.deposito ?? 0),
         // dif real: excluye lo pendiente EN PLAZO (aún no tenía que llegar)

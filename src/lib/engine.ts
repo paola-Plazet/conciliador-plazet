@@ -22,7 +22,8 @@ import type {
   StoreAlert,
   PendingDeposit,
 } from "./types";
-import { storeName, STORES } from "./stores";
+import { storeName, STORES, esCentroComercial } from "./stores";
+import { calcularCortesCC, type CorteCC, type PagoCC } from "./centro-comercial";
 import { within, DEFAULT_TOLERANCE, formatCOP } from "./money";
 import {
   expectedSalesDays,
@@ -738,13 +739,17 @@ export interface ConciliationSummary {
   alerts: StoreAlert[];
   /** Días de venta en efectivo aún sin consignar, por tienda */
   pendings: PendingDeposit[];
+  /** Cortes de las tiendas de CENTRO COMERCIAL (todos, incluidos los en plazo) */
+  cortesCC: CorteCC[];
+  /** Abonos del banco que resultaron ser pagos del centro comercial */
+  pagosCC: PagoCC[];
 }
 
 /** Mes de conciliación de un resultado: el de las ventas que cubre
  * (última fecha de venta); si no cubre ninguna, el del depósito. */
 function monthOf(r: ConciliationResult): string {
   const anchor =
-    r.channel === "EFECTIVO" && r.salesDates.length > 0
+    (r.channel === "EFECTIVO" || r.channel === "CENTRO_COMERCIAL") && r.salesDates.length > 0
       ? r.salesDates[r.salesDates.length - 1]
       : r.depositDate;
   return anchor.slice(0, 7);
@@ -807,24 +812,59 @@ export function conciliar(input: ConciliationInput): ConciliationSummary {
   const lateThresholdCount = input.options?.lateThresholdCount ?? 3;
   const holidays = new Set(input.holidays);
 
+  // Tiendas de CENTRO COMERCIAL (Floresta): su efectivo y datáfono no se
+  // consignan ni pasan por datáfono propio — los recauda el centro comercial
+  // por cortes de 10 días. Se sacan de esos dos canales y van al canal
+  // CENTRO_COMERCIAL. El QR de esas tiendas sigue por el canal QR normal.
+  const esVentaCC = (s: SaleInvoice) =>
+    esCentroComercial(s.storeCode) &&
+    (s.method === "EFECTIVO" || s.method === "TARJETA_CREDITO" || s.method === "TARJETA_DEBITO");
+  const ventasDirectas = input.sales.filter((s) => !esVentaCC(s));
+  const ventasCC = input.sales.filter(esVentaCC);
+  const cc = calcularCortesCC(ventasCC, input.bank, input.qrBank ?? [], holidays, tolerance);
+  // los abonos que resultaron ser pagos del centro comercial no son QR de clientes
+  const usadoCC = new Set(
+    cc.pagosUsados.filter((p) => p.cuenta === "BANCOLOMBIA").map((p) => `${p.date}|${Math.round(p.amount)}|${p.concept}`),
+  );
+  const qrBankLibre = (input.qrBank ?? []).filter((q) => !usadoCC.has(`${q.date}|${Math.round(q.amount)}|${q.concept}`));
+
   const efectivo = conciliarEfectivo(
-    input.sales,
+    ventasDirectas,
     input.bank,
     holidays,
     tolerance,
     maxGroupDays,
   );
-  const datafono = conciliarDatafono(input.sales, input.datafono, tolerance);
-  const qr = conciliarQr(input.sales, input.qrBank ?? [], tolerance);
+  const datafono = conciliarDatafono(ventasDirectas, input.datafono, tolerance);
+  const qr = conciliarQr(input.sales, qrBankLibre, tolerance);
 
-  annotateQrDiversion(efectivo.results, input.sales, input.qrBank ?? [], tolerance);
+  annotateQrDiversion(efectivo.results, ventasDirectas, qrBankLibre, tolerance);
 
-  let results = [...efectivo.results, ...datafono, ...qr];
+  // Cortes del centro comercial: los EN_PLAZO aún no se exigen (como el
+  // efectivo en plazo); los pagados y los vencidos sí entran a los resultados
+  const ccResults: ConciliationResult[] = cc.cortes
+    .filter((c) => c.estado !== "EN_PLAZO")
+    .map((c) => ({
+      id: `CC:${c.storeCode}:${c.hasta}`,
+      channel: "CENTRO_COMERCIAL" as const,
+      storeCode: c.storeCode,
+      storeName: c.storeName,
+      method: "CENTRO_COMERCIAL" as const,
+      depositDate: c.pago?.date ?? c.pagoEsperado,
+      depositAmount: c.pago?.amount ?? 0,
+      salesDates: c.dias.map((d) => d.date),
+      salesAmount: c.total,
+      difference: (c.pago?.amount ?? 0) - c.total,
+      status: (c.estado === "CUADRA" ? "CUADRA" : c.estado === "DIFERENCIA" ? "DIFERENCIA" : "SIN_CONCILIAR") as ConciliationResult["status"],
+      note: c.nota,
+    }));
+
+  let results = [...efectivo.results, ...datafono, ...qr, ...ccResults];
   for (const r of results) r.month = monthOf(r);
 
   // mapa de ventas efectivo por tienda/día para recálculo de ajustes
   const salesByStoreDay = groupByStoreDay(
-    input.sales.filter((s) => s.method === "EFECTIVO"),
+    ventasDirectas.filter((s) => s.method === "EFECTIVO"),
     (s) => s.storeCode,
     (s) => s.date,
     (s) => s.amount,
@@ -841,7 +881,7 @@ export function conciliar(input: ConciliationInput): ConciliationSummary {
 
   const alerts = buildStoreAlerts(results, lateThresholdPct, lateThresholdCount);
 
-  return { results, totals, alerts, pendings: efectivo.pendings };
+  return { results, totals, alerts, pendings: efectivo.pendings, cortesCC: cc.cortes, pagosCC: cc.pagosUsados };
 }
 
 /** Lista de códigos de tienda conocidos (para UI) */

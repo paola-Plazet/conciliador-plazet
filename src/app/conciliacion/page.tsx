@@ -143,7 +143,7 @@ export default function ConciliacionPage() {
           </div>
         )}
         <Card className="flex flex-wrap gap-4">
-          <Filter label="Canal" value={channel} onChange={(v) => setChannel(v as Channel | "TODOS")} options={[["TODOS", "Todos"], ["EFECTIVO", "Efectivo"], ["DATAFONO", "Datáfono"], ["QR", "QR"]]} />
+          <Filter label="Canal" value={channel} onChange={(v) => setChannel(v as Channel | "TODOS")} options={[["TODOS", "Todos"], ["EFECTIVO", "Efectivo"], ["DATAFONO", "Datáfono"], ["QR", "QR"], ["CENTRO_COMERCIAL", "Centro comercial"]]} />
           <Filter label="Estado" value={status} onChange={(v) => setStatus(v as ConciliationStatus | "TODOS")} options={[["TODOS", "Todos"], ["CUADRA", "Cuadran"], ["DIFERENCIA", "Diferencias"], ["SIN_CONCILIAR", "Sin conciliar"], ["MANUAL", "Manual"]]} />
           <Filter label="Tienda" value={store} onChange={setStore} options={[["TODOS", "Todas"], ...stores.map((s) => [s, s] as [string, string])]} />
         </Card>
@@ -167,7 +167,7 @@ export default function ConciliacionPage() {
               {filtered.map((r) => (
                 <tr key={r.id} className="border-b border-plazet-50 hover:bg-plazet-50/30">
                   <td className="px-4 py-2.5 text-gray-500">
-                    {r.channel === "EFECTIVO" ? "Efectivo" : r.channel === "QR" ? "QR" : "Datáfono"}
+                    {r.channel === "EFECTIVO" ? "Efectivo" : r.channel === "QR" ? "QR" : r.channel === "CENTRO_COMERCIAL" ? "Centro comercial" : "Datáfono"}
                   </td>
                   <td className="px-4 py-2.5 font-medium text-plazet-900">{r.storeName}</td>
                   <td className="px-4 py-2.5">{formatDate(r.depositDate)}</td>

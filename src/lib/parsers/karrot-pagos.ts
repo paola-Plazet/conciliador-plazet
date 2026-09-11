@@ -18,6 +18,8 @@ const CODIGO_TIENDA = new Map<string, string>([
   ["B2", "B2"],
   ["B3", "B3"],
   ["C1", "JP"],
+  ["B4", "B4"], // Floresta Burbuja (centro comercial)
+  ["B5", "B5"], // Floresta (centro comercial)
 ]);
 
 function metodo(nombre: string, tipoCuenta: string): PaymentMethod {

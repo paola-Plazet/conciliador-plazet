@@ -1,7 +1,63 @@
 # Estado de la APP y el TABLERO — retomar aquí
 
-Última sesión: 10-sep-2026. Retomar con:
+Última sesión: 11-sep-2026. Retomar con:
 **"retomemos el conciliador, lee docs/estado-app-tablero.md"**
+
+## 11-sep-2026 — datáfono: diferencia NETA en la tabla + tasa Credibanco verificada
+
+**Tabla /tiendas (FilaDia):** la columna de diferencia del datáfono ya no muestra "falta X / sobra Y"
+apilados sino la DIFERENCIA NETA del día (falta − sobra): rojo "falta", ámbar "sobra", verde "cuadra"
+(con "(±X)" gris si falta y sobra se compensaron). El cruce sigue siendo exacto transacción por
+transacción (`datafono-cruce.ts`) y el modal al clic en la venta sigue mostrando cuáles faltan y
+cuáles entraron de más. El triángulo de alerta también usa el neto. Pedido de Paola (11-sep).
+PENDIENTE: commit + deploy (Paola debe confirmar).
+
+**Tasa Credibanco (scripts `datafono-tasa.ts`, `datafono-tasa2.ts`, `datafono-lag-aut.ts`, solo
+lectura):** el descuento por transacción es EXACTO y constante: comisión **1,99 %** (no 1,89 %) +
+retefuente 1,5 % + reteICA 0,414 % Bogotá (B1/B2/B3) ó 0,7 % Cali (JP) = neto 96,096 % / 95,81 %.
+Sin IVA ni 4x1000 en el abono (columnas VALOR RETE IVA y PROVISION = 0 en el "Reporte Tarjeta
+Original" de Conciliar). 172/172 lotes (día de venta + terminal + franquicia) coinciden al peso con
+los "ABONO NETO VISA/MASTER/AMEX" de Bancolombia; rezago 1 día hábil (lunes = vie+sáb+dom). Por código
+de autorización, 3.192 pagos POS↔Conciliar con 0 días de diferencia (la fecha del datáfono es la del
+POS). Karrot marca "AMEX" en muchos pagos que en Conciliar son Visa/MC (solo 4 AMEX reales en 3 sem.).
+
+## 11-sep-2026 — Floresta (B4/B5, recaudo por CENTRO COMERCIAL) + todo automático
+
+**Tiendas nuevas (Paola 10-sep):** `B4 Floresta Burbuja` (PLAZET BURBUJA FLORESTA) y `B5 Floresta`
+(PLAZET FLORESTA), códigos = "Código Almacén" de Karrot. En `stores.ts` con `recaudo: "CENTRO_COMERCIAL"`,
+sin datáfono propio ni referencia de consignación (sembradas en la tabla Store con `seed.ts`).
+
+**Regla del centro comercial (Paola):** la caja es del centro comercial: recauda TODO el efectivo y el
+datáfono, hace cortes cada 10 días (1–10, 11–20, 21–fin de mes) y paga 2-3 días hábiles después. El QR sí
+entra a Bancolombia (canal QR normal). Implementado en `src/lib/centro-comercial.ts` (`calcularCortesCC`):
+- el motor (`engine.ts`) saca las ventas EFECTIVO/TARJETA de esas tiendas de los canales efectivo y
+  datáfono y arma cortes por tienda; canal nuevo `CENTRO_COMERCIAL` en `types.ts`;
+- por cada corte busca UN abono por el total (±$500) entre el día siguiente al corte y
+  `CC_VENTANA_HABILES = 6` hábiles, en Alianza (abonos que no son RECAUDO REFE) y en Bancolombia
+  (abonos que no son PAGO QR/LLAVE); también acepta un pago CONJUNTO B4+B5 del mismo corte y, si no
+  calza el valor, un rótulo con "FLORESTA" (queda DIFERENCIA);
+- estados: EN_PLAZO (aún no se exige; no entra a resultados) · CUADRA · DIFERENCIA · VENCIDO
+  (SIN_CONCILIAR si el extracto ya pasó el límite sin pago). Pago esperado = corte + 3 hábiles;
+- los abonos usados se quitan del cruce QR (`pagosCC`) para no contarlos como pagos de clientes;
+- tablero: tarjeta "Centro comercial (efectivo + datáfono)" en vez de Efectivo/Datáfono, tabla
+  "Cortes del centro comercial", los días marcan "→ centro comercial"; /resumen fila "Centro
+  comercial"; /conciliacion filtro "Centro comercial". Probado con datos sintéticos (exacto, conjunto,
+  vencido, en plazo). **SUPUESTOS por confirmar con el primer pago real:** llega completo (sin comisión)
+  y a Alianza o Bancolombia; si no, ajustar `centro-comercial.ts`. Al 10-sep solo hay 2 ventas QR.
+
+**Automático (Paola: "haz que todo sea automático"):**
+- `vercel.json` cron diario 09:00 UTC (04:00 Colombia) → `GET /api/cron/sync` (bearer `CRON_SECRET`,
+  env en Vercel Production y en .env): corre en paralelo Shopify + Mercado Pago + Alegra (mes en curso;
+  los 5 primeros días también el anterior). Lógica compartida en `src/lib/sync.ts` (el botón de /web usa
+  lo mismo). Probado local: ~53 s → `maxDuration = 300`.
+- `POST /api/cron/karrot` (bearer `KARROT_PUSH_TOKEN` o CRON_SECRET; cuerpo = CSV del conector, tolera
+  el prefijo "[Resource from ...]"): lo carga por `ingestFiles` (replace-range) y responde por día.
+- **Rutina de Claude (claude.ai/code/routines)** diaria 09:15 UTC con el conector Karrot: pide
+  `ALL_SALES_DETAIL_PAYMENT_METHOD` de los últimos 3 días completos (ventana grande para que el MCP lo
+  guarde en archivo y no haya que transcribir), y lo empuja con curl al endpoint. Cargar 3 días cada vez
+  es idempotente y cura días que quedaron a medias.
+- Si algo falla: logs de la rutina en claude.ai/code/routines; cron en Vercel → Logs; el tablero muestra
+  hasta qué fecha llegó cada fuente (cortes).
 
 ## 10-sep-2026 — Karrot por CONECTOR (sin bajar el allsales) + 7-sep estaba incompleto
 

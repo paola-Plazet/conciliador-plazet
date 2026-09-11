@@ -10,7 +10,7 @@ const cop = (n: number) => new Intl.NumberFormat("es-CO", { maximumFractionDigit
 type Totales = { venta: number; recaudo: number; falta: number; sobra: number; neto: number };
 interface ApiData {
   cut: { sales: string | null; bank: string | null; qr: string | null; datafono: string | null };
-  porMetodo: { efectivo: Totales; datafono: Totales; qr: Totales; mercadopago: Totales };
+  porMetodo: { efectivo: Totales; datafono: Totales; qr: Totales; mercadopago: Totales; centroComercial?: Totales };
   otrosVenta: { plataforma: string; venta: number }[];
   porMes: (Totales & { mes: string })[];
   porTienda: (Totales & { code: string; name: string })[];
@@ -87,6 +87,9 @@ export default function ResumenPage() {
                 <tbody>
                   <FilaMetodo label="Efectivo" t={api.porMetodo.efectivo} />
                   <FilaMetodo label="Datáfono (tarjetas)" t={api.porMetodo.datafono} />
+                  {api.porMetodo.centroComercial && (api.porMetodo.centroComercial.venta > 0 || api.porMetodo.centroComercial.recaudo > 0) && (
+                    <FilaMetodo label="Centro comercial (Floresta: efectivo + datáfono por cortes)" t={api.porMetodo.centroComercial} />
+                  )}
                   <FilaMetodo label="QR" t={api.porMetodo.qr} />
                   <FilaMetodo label="Mercado Pago" t={api.porMetodo.mercadopago} />
                 </tbody>
@@ -128,7 +131,7 @@ export default function ResumenPage() {
                 </tbody>
               </table>
               <div className="px-5 py-3 text-xs text-gray-500 border-t border-plazet-50">
-                Suma efectivo + datáfono + QR + Mercado Pago.
+                Suma efectivo + datáfono + QR + Mercado Pago (+ los cortes del centro comercial de Floresta).
               </div>
             </Card>
 
@@ -161,7 +164,7 @@ export default function ResumenPage() {
                 </tbody>
               </table>
               <div className="px-5 py-3 text-xs text-gray-500 border-t border-plazet-50">
-                Suma efectivo + datáfono (los únicos canales que se identifican por tienda). QR y Mercado Pago entran
+                Suma efectivo + datáfono (los únicos canales que se identifican por tienda; en Floresta, los cortes del centro comercial). QR y Mercado Pago entran
                 al banco a nivel empresa, sin desglose confiable por tienda.
               </div>
             </Card>

@@ -10,17 +10,17 @@ async function main() {
       update: {
         name: s.name,
         alegraBodega: s.alegraBodega,
-        establishment: s.establishment,
-        terminalVisa: s.terminalVisa,
-        terminalMaster: s.terminalMaster,
+        establishment: s.establishment || null,
+        terminalVisa: s.terminalVisa || null,
+        terminalMaster: s.terminalMaster || null,
       },
       create: {
         code: s.code,
         name: s.name,
         alegraBodega: s.alegraBodega,
-        establishment: s.establishment,
-        terminalVisa: s.terminalVisa,
-        terminalMaster: s.terminalMaster,
+        establishment: s.establishment || null,
+        terminalVisa: s.terminalVisa || null,
+        terminalMaster: s.terminalMaster || null,
       },
     });
   }

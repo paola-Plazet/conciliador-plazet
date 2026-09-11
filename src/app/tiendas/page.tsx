@@ -86,7 +86,7 @@ interface DiaEfe {
   enPlazo?: boolean; // pendiente pero aún en plazo (se consigna al día hábil siguiente)
 }
 interface Dia {
-  date: string; efe: DiaEfe; tar: { venta: number; plink: number; dif: number; falta: number; sobra: number; sinCargar: boolean };
+  date: string; efe: DiaEfe; tar: { venta: number; plink: number; dif: number; falta: number; sobra: number; sinCargar: boolean; cc?: boolean };
   qrVenta: number; qrBanco: number; qrDif: number; qrSinCargar: boolean;
   mercadopago: number; rappi: number; addi: number; otros: number;
 }
@@ -98,10 +98,21 @@ interface Totales {
   qrVenta: number; qrBanco: number; qrSinCargar: number;
   qrFaltaTotal: number; qrSobraTotal: number;
   mercadopago: number; rappi: number; addi: number; otros: number;
+  /** solo tiendas de CENTRO COMERCIAL (Floresta): efectivo + datáfono por cortes */
+  cc?: { venta: number; efectivo: number; datafono: number; pagado: number; enPlazo: number; vencido: number; dif: number } | null;
+}
+/** Corte de 10 días del centro comercial (efectivo + datáfono) y su pago */
+interface Corte {
+  storeCode: string; desde: string; hasta: string;
+  dias: { date: string; efectivo: number; datafono: number }[];
+  ventaEfectivo: number; ventaDatafono: number; total: number;
+  pagoEsperado: string; pagoLimite: string;
+  pago: { cuenta: "ALIANZA" | "BANCOLOMBIA"; date: string; amount: number; concept: string } | null;
+  dif: number; estado: "EN_PLAZO" | "VENCIDO" | "CUADRA" | "DIFERENCIA"; nota?: string;
 }
 interface ApiData {
-  months: string[]; month: string; rango?: { from: string; to: string } | null; stores: { code: string; name: string }[];
-  data: Record<string, { days: Dia[]; totales: Totales }>;
+  months: string[]; month: string; rango?: { from: string; to: string } | null; stores: { code: string; name: string; recaudo?: string | null }[];
+  data: Record<string, { days: Dia[]; totales: Totales; cortes?: Corte[] }>;
   qrEmpresa: { date: string; venta: number; banco: number; dif: number }[];
   qrResumen: { asignado: number; sinAsignar: number; revisar: { date: string; amount: number; payer: string; stores: string[] }[] };
   mpEmpresa: { date: string; venta: number; bruto: number; neto: number; dif: number }[];
@@ -333,13 +344,21 @@ export default function TiendasPage() {
       {/* tarjetas por canal (según filtro) */}
       {tot && (
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {ver("efectivo") && (
+          {(ver("efectivo") || ver("datafono")) && tot.cc && (
+            <CardCanal icon={<Landmark size={18} />} titulo="Centro comercial (efectivo + datáfono)"
+              venta={tot.cc.venta} recaudo={tot.cc.pagado}
+              faltante={tot.cc.vencido - tot.cc.dif}
+              extra={tot.cc.enPlazo > 0
+                ? `⏳ Corte en plazo (el centro comercial paga 2-3 días hábiles después): ${cop(tot.cc.enPlazo)}`
+                : "Cortes cada 10 días · detalle abajo ↓"} />
+          )}
+          {ver("efectivo") && !tot.cc && (
             <CardCanal icon={<Banknote size={18} />} titulo="Efectivo"
               venta={tot.efeVenta} recaudo={tot.efeDepositado} faltante={-tot.efeDif}
               desglose={{ falta: tot.efeFaltaTotal, sobra: tot.efeSobraTotal }}
               extra={tot.efePendiente > 0 ? `⏳ En plazo (se consigna el día hábil sig.): ${cop(tot.efePendiente)}` : undefined} />
           )}
-          {ver("datafono") && (
+          {ver("datafono") && !tot.cc && (
             <CardCanal icon={<CreditCard size={18} />} titulo="Datafono" venta={tot.tarVenta} recaudo={tot.tarPlink} faltante={tot.tarDif}
               desglose={{ falta: tot.tarFaltaTotal, sobra: tot.tarSobraTotal }}
               extra={tot.tarSinCargar > 0 ? `📄 Falta cargar Plink (llega al ${api.cut.datafono?.slice(8)}/${api.cut.datafono?.slice(5, 7)}): ${cop(tot.tarSinCargar)}` : undefined} />
@@ -365,6 +384,57 @@ export default function TiendasPage() {
         </div>
       )}
 
+      {/* cortes del centro comercial (Floresta): el efectivo y el datáfono los recauda el centro comercial y los paga por cortes */}
+      {tienda?.cortes && tienda.cortes.length > 0 && (ver("efectivo") || ver("datafono")) && (
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-700">Cortes del centro comercial — efectivo + datáfono</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            La caja es del centro comercial: recauda el efectivo y el datáfono, corta cada 10 días (1–10, 11–20, 21–fin de mes) y paga 2-3 días hábiles después.
+            El pago se busca en los extractos de Alianza y Bancolombia por el total del corte. El QR sí entra directo a Bancolombia (canal QR).
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                  <th className="px-3 py-2">Corte</th>
+                  <th className="px-3 py-2 text-right">Efectivo</th>
+                  <th className="px-3 py-2 text-right">Datáfono</th>
+                  <th className="px-3 py-2 text-right">Total</th>
+                  <th className="px-3 py-2">Pago esperado</th>
+                  <th className="px-3 py-2">Pago recibido</th>
+                  <th className="px-3 py-2 text-right">Dif</th>
+                  <th className="px-3 py-2">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tienda.cortes.map((c) => (
+                  <tr key={c.desde} className="border-b border-gray-100">
+                    <td className="whitespace-nowrap px-3 py-2 font-medium text-gray-700">{diaCorto(c.desde)} → {diaCorto(c.hasta)}<div className="text-[10px] font-normal text-gray-400">{c.dias.length} día{c.dias.length === 1 ? "" : "s"} con venta</div></td>
+                    <td className="px-3 py-2 text-right">{cop(c.ventaEfectivo)}</td>
+                    <td className="px-3 py-2 text-right">{cop(c.ventaDatafono)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{cop(c.total)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-gray-600">{diaCorto(c.pagoEsperado)}<div className="text-[10px] text-gray-400">se busca hasta el {diaCorto(c.pagoLimite)}</div></td>
+                    <td className="px-3 py-2">
+                      {c.pago
+                        ? <span>{cop(c.pago.amount)}<div className="text-[10px] text-gray-400">{diaCorto(c.pago.date)} · {c.pago.cuenta === "ALIANZA" ? "Alianza" : "Bancolombia"} · {c.pago.concept}</div></span>
+                        : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className={`px-3 py-2 text-right ${c.pago ? difColor(-c.dif) : "text-gray-300"}`}>{c.pago ? difTexto(-c.dif) : "—"}</td>
+                    <td className="px-3 py-2">
+                      {c.estado === "CUADRA" ? <span className="rounded-full bg-plazet-50 px-2 py-0.5 text-[11px] font-semibold text-plazet-700">cuadra</span>
+                        : c.estado === "DIFERENCIA" ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">diferencia</span>
+                        : c.estado === "VENCIDO" ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">sin pago · vencido</span>
+                        : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">⏳ en plazo</span>}
+                      {c.nota && <div className="mt-0.5 max-w-xs text-[10px] text-gray-400">{c.nota}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* gráfico diario (solo canales con recaudo comparable) */}
       {(canal === "todo" || canal === "efectivo" || canal === "datafono") && (
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -386,8 +456,8 @@ export default function TiendasPage() {
               // lo pendiente EN PLAZO se pinta gris (no es faltante todavía)
               const efePend = d.efe.estado === "PENDIENTE" && d.efe.enPlazo;
               const faltEfe = !efePend && d.efe.estado !== "AGRUPADO" && d.efe.estado !== "SIN_VENTA" ? -d.efe.dif : 0;
-              const colEfe = efePend ? "bg-gray-300" : estadoDe(faltEfe) === "falta" ? "bg-red-400" : estadoDe(faltEfe) === "sobra" ? "bg-amber-400" : "bg-plazet-500";
-              const colTar = d.tar.sinCargar ? "bg-gray-200" : estadoDe(d.tar.dif) === "falta" ? "bg-red-300" : estadoDe(d.tar.dif) === "sobra" ? "bg-amber-300" : "bg-sky-400";
+              const colEfe = d.efe.estado === "CENTRO_COMERCIAL" ? "bg-indigo-300" : efePend ? "bg-gray-300" : estadoDe(faltEfe) === "falta" ? "bg-red-400" : estadoDe(faltEfe) === "sobra" ? "bg-amber-400" : "bg-plazet-500";
+              const colTar = d.tar.cc ? "bg-indigo-200" : d.tar.sinCargar ? "bg-gray-200" : estadoDe(d.tar.dif) === "falta" ? "bg-red-300" : estadoDe(d.tar.dif) === "sobra" ? "bg-amber-300" : "bg-sky-400";
               return (
                 <div key={d.date} className="group relative h-full flex-1 flex items-end gap-[2px]" title={d.date}>
                   {ver("efectivo") && (
@@ -1201,7 +1271,7 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "ok"
 function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: { d: Dia; ver: (c: Canal) => boolean; canal: Canal; onQrClick?: (date: string) => void; onTarClick?: (date: string) => void; onNota?: (date: string) => void; nNotas?: number }) {
   const tieneNota = nNotas > 0;
   const e = d.efe;
-  const mostrarDifEfe = e.estado !== "AGRUPADO" && e.estado !== "SIN_VENTA";
+  const mostrarDifEfe = e.estado !== "AGRUPADO" && e.estado !== "SIN_VENTA" && e.estado !== "CENTRO_COMERCIAL";
 
   // señales de alerta SOLO de los canales visibles (para que el triángulo no se
   // prenda por un canal que no estás mirando). Lo pendiente EN PLAZO no alerta.
@@ -1209,11 +1279,13 @@ function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: {
   const tonos: Estado[] = [];
   if (ver("efectivo") && mostrarDifEfe && (e.venta || e.deposito) && !efeEnPlazo)
     tonos.push(e.estado === "CUADRA" || e.estado === "MANUAL" ? "cuadra" : estadoDe(-e.dif));
-  if (ver("datafono") && (d.tar.venta || d.tar.plink) && !d.tar.sinCargar) {
-    // datáfono: cruce exacto, falta y sobra por separado (nunca neteadas)
-    if (d.tar.falta > 0) tonos.push("falta");
-    if (d.tar.sobra > 0) tonos.push("sobra");
-    if (d.tar.falta === 0 && d.tar.sobra === 0) tonos.push("cuadra");
+  // datáfono: el cruce sigue siendo exacto transacción por transacción, pero la
+  // tabla muestra la DIFERENCIA NETA del día (falta - sobra), que es lo que Paola
+  // quiere ver (11-sep-2026); el detalle de cuáles faltan y cuáles entraron de
+  // más está en el modal al hacer clic en la venta.
+  const tarNeto = d.tar.falta - d.tar.sobra;
+  if (ver("datafono") && (d.tar.venta || d.tar.plink) && !d.tar.sinCargar && !d.tar.cc) {
+    tonos.push(tarNeto === 0 ? "cuadra" : tarNeto > 0 ? "falta" : "sobra");
   }
   if (ver("qr") && (d.qrVenta || d.qrBanco) && !d.qrSinCargar) tonos.push(estadoDe(d.qrDif));
   const hayEnPlazo = ver("efectivo") && efeEnPlazo;
@@ -1258,6 +1330,7 @@ function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: {
               {e.depositoFecha && <div className="leading-tight">consignado {diaCorto(e.depositoFecha)}</div>}
             </span>
           )
+            : e.estado === "CENTRO_COMERCIAL" ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-medium text-indigo-700" title="Lo recauda el centro comercial y lo paga por cortes de 10 días (ver Cortes del centro comercial)">→ centro comercial</span>
             : e.estado === "PENDIENTE" && e.enPlazo ? <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-500">⏳ en plazo</span>
             : e.estado === "PENDIENTE" ? <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-700">sin consignar</span>
             : "—"}
@@ -1283,16 +1356,21 @@ function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: {
           ) : "—"}
         </td>
       )}
-      {ver("datafono") && <td className="px-3 py-2 text-right text-gray-600">{d.tar.sinCargar ? <span className="text-[11px] text-gray-400">📄</span> : d.tar.plink ? cop(d.tar.plink) : "—"}</td>}
+      {ver("datafono") && <td className="px-3 py-2 text-right text-gray-600">{d.tar.cc ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-medium text-indigo-700" title="Lo recauda el centro comercial y lo paga por cortes de 10 días">→ centro comercial</span> : d.tar.sinCargar ? <span className="text-[11px] text-gray-400">📄</span> : d.tar.plink ? cop(d.tar.plink) : "—"}</td>}
       {ver("datafono") && (
         <td className={`px-3 py-2 text-right ${d.tar.sinCargar ? "text-gray-400" : ""}`}>
-          {d.tar.sinCargar ? "sin cargar"
+          {d.tar.cc ? "—"
+            : d.tar.sinCargar ? "sin cargar"
             : !(d.tar.venta || d.tar.plink) ? "—"
-            : d.tar.falta === 0 && d.tar.sobra === 0 ? <span className="text-plazet-700">cuadra</span>
             : (
-              <span className="flex flex-col items-end leading-tight" title="Cruce exacto transacción por transacción: falta = registrado en el POS y no está en el datáfono; sobra = entró al datáfono sin factura">
-                {d.tar.falta > 0 && <span className="font-semibold text-red-600">falta {cop(d.tar.falta)}</span>}
-                {d.tar.sobra > 0 && <span className="font-semibold text-amber-600">sobra {cop(d.tar.sobra)}</span>}
+              <span
+                className={tarNeto === 0 ? "text-plazet-700" : tarNeto > 0 ? "font-semibold text-red-600" : "font-semibold text-amber-600"}
+                title={`Diferencia neta del día (POS − datáfono). Falta ${cop(d.tar.falta)}: pagos del POS sin transacción en el datáfono · Sobra ${cop(d.tar.sobra)}: transacciones del datáfono sin factura. Clic en la venta para ver cuáles.`}
+              >
+                {tarNeto === 0 ? "cuadra" : tarNeto > 0 ? `falta ${cop(tarNeto)}` : `sobra ${cop(-tarNeto)}`}
+                {tarNeto === 0 && d.tar.falta > 0 && (
+                  <span className="ml-1 text-[10px] font-normal text-gray-400">(±{cop(d.tar.falta)})</span>
+                )}
               </span>
             )}
         </td>

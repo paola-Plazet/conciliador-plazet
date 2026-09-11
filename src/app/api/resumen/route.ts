@@ -44,6 +44,7 @@ export async function GET() {
     datafono: vacio(),
     qr: vacio(),
     mercadopago: vacio(),
+    centroComercial: vacio(),
   };
   const porMes = new Map<string, Totales>(); // suma efectivo+datafono+qr+mercadopago
   const porTienda = new Map<string, Totales>(); // suma efectivo+datafono (únicos con tienda)
@@ -60,16 +61,16 @@ export async function GET() {
     r.status === "SIN_CONCILIAR" &&
     (r.note?.includes("no comparable") || r.note?.includes("Faltan ventas previas"));
   for (const r of ledger.summary.results) {
-    if (r.channel !== "EFECTIVO" && r.channel !== "DATAFONO" && r.channel !== "QR") continue;
+    if (r.channel !== "EFECTIVO" && r.channel !== "DATAFONO" && r.channel !== "QR" && r.channel !== "CENTRO_COMERCIAL") continue;
     if (esHuecoDeArchivo(r)) continue;
     const recaudo = r.depositAmount;
     const venta = r.salesAmount;
-    const metodo = r.channel === "EFECTIVO" ? "efectivo" : r.channel === "DATAFONO" ? "datafono" : "qr";
+    const metodo = r.channel === "EFECTIVO" ? "efectivo" : r.channel === "DATAFONO" ? "datafono" : r.channel === "CENTRO_COMERCIAL" ? "centroComercial" : "qr";
     const exacto = r.channel === "DATAFONO" && r.falta != null && r.sobra != null ? { falta: r.falta, sobra: r.sobra } : undefined;
     acumula(porMetodo[metodo], venta, recaudo, exacto);
     const mes = r.month ?? r.depositDate.slice(0, 7);
     acumula(mesOf(porMes, mes), venta, recaudo, exacto);
-    if ((r.channel === "EFECTIVO" || r.channel === "DATAFONO") && r.storeCode) {
+    if ((r.channel === "EFECTIVO" || r.channel === "DATAFONO" || r.channel === "CENTRO_COMERCIAL") && r.storeCode) {
       acumula(mesOf(porTienda, r.storeCode), venta, recaudo, exacto);
     }
   }
@@ -146,6 +147,7 @@ export async function GET() {
       datafono: toArray(porMetodo.datafono),
       qr: toArray(porMetodo.qr),
       mercadopago: toArray(porMetodo.mercadopago),
+      centroComercial: toArray(porMetodo.centroComercial),
     },
     otrosVenta: [...otrosVenta.entries()].map(([plataforma, venta]) => ({ plataforma, venta })),
     porMes: [...porMes.entries()]

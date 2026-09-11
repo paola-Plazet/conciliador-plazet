@@ -9,7 +9,7 @@ export type PaymentMethod =
   | "OTRO";
 
 /** Canal de conciliación: contra qué cuenta se concilia */
-export type Channel = "EFECTIVO" | "DATAFONO" | "QR";
+export type Channel = "EFECTIVO" | "DATAFONO" | "QR" | "CENTRO_COMERCIAL";
 
 /** Una venta (factura) deduplicada de Alegra */
 export interface SaleInvoice {
@@ -74,7 +74,7 @@ export interface ConciliationResult {
   channel: Channel;
   storeCode: string | null;
   storeName: string;
-  method: PaymentMethod | "TARJETAS" | "QR";
+  method: PaymentMethod | "TARJETAS" | "QR" | "CENTRO_COMERCIAL";
   depositDate: string; // fecha del depósito en el banco
   depositAmount: number; // monto del depósito (o suma de abonos del día)
   salesDates: string[]; // días de venta que cubre
