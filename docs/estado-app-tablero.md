@@ -10,7 +10,7 @@ apilados sino la DIFERENCIA NETA del día (falta − sobra): rojo "falta", ámba
 (con "(±X)" gris si falta y sobra se compensaron). El cruce sigue siendo exacto transacción por
 transacción (`datafono-cruce.ts`) y el modal al clic en la venta sigue mostrando cuáles faltan y
 cuáles entraron de más. El triángulo de alerta también usa el neto. Pedido de Paola (11-sep).
-PENDIENTE: commit + deploy (Paola debe confirmar).
+Desplegado el 11-sep (commit 1835624 + scripts en el siguiente).
 
 **Tasa Credibanco (scripts `datafono-tasa.ts`, `datafono-tasa2.ts`, `datafono-lag-aut.ts`, solo
 lectura):** el descuento por transacción es EXACTO y constante: comisión **1,99 %** (no 1,89 %) +
