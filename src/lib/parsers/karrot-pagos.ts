@@ -8,6 +8,7 @@
 // Tienda por "Código Almacén" (B1/B2/B3, C1 = Jardín Plaza). Las ventas web
 // (NL / SHOPIFY) no tienen código: quedan sin tienda física.
 
+import { parse as parseCsv } from "csv-parse/sync";
 import { readWorkbook, sheetRows, headerIndex, findCol, parseNumber, fromExcelSerial, fromDDMMYYYY } from "./util";
 import type { PaymentMethod, SaleInvoice } from "../types";
 import type { AlegraParseResult } from "./alegra";
@@ -57,23 +58,36 @@ function fecha(raw: unknown): string | null {
   return null;
 }
 
+/** El CONECTOR de Karrot (MCP generate-report ALL_SALES_DETAIL_PAYMENT_METHOD)
+ * entrega este mismo reporte como CSV con encabezados en inglés ("Invoice #",
+ * "Payment Method Value", "Date", "Hour"...). Claude lo saca directo de Karrot
+ * sin que Paola baje el allsales. Se lee con csv-parse para que SheetJS no
+ * convierta "2026-09-07" ni "20:52" a números. */
+export function esCsvConectorKarrot(buffer: Buffer): boolean {
+  const head = buffer.subarray(0, 400).toString("utf8").replace(/^\uFEFF/, "").toUpperCase();
+  return head.startsWith("INVOICE #") && head.includes("PAYMENT METHOD VALUE");
+}
+
 export function parseKarrotPagos(buffer: Buffer): AlegraParseResult {
-  const rows: unknown[][] = sheetRows(readWorkbook(buffer));
+  const rows: unknown[][] = esCsvConectorKarrot(buffer)
+    ? (parseCsv(buffer.toString("utf8"), { bom: true, relax_column_count: true, skip_empty_lines: true, trim: true }) as unknown[][])
+    : sheetRows(readWorkbook(buffer));
   const warnings: string[] = [];
   if (rows.length < 2) {
     return { sales: [], totalInvoices: 0, totalAmount: 0, byMethod: {}, warnings: ["Archivo vacío."] };
   }
 
   const idx = headerIndex(rows[0]);
-  const cFac = findCol(idx, "# FACTURA");
-  const cCod = findCol(idx, "CÓDIGO ALMACÉN", "CODIGO ALMACEN");
-  const cNom = findCol(idx, "NOMBRE ALMACÉN", "NOMBRE ALMACEN");
-  const cCancel = findCol(idx, "CANCELADO");
-  const cFecha = findCol(idx, "FECHA");
-  const cMet = findCol(idx, "NOMBRE MÉTODO DE PAGO", "NOMBRE METODO DE PAGO");
-  const cVal = findCol(idx, "VALOR MÉTODO DE PAGO", "VALOR METODO DE PAGO");
+  // nombres del XLSX (español) y del CSV del conector (inglés)
+  const cFac = findCol(idx, "# FACTURA", "INVOICE #");
+  const cCod = findCol(idx, "CÓDIGO ALMACÉN", "CODIGO ALMACEN", "WAREHOUSE CODE");
+  const cNom = findCol(idx, "NOMBRE ALMACÉN", "NOMBRE ALMACEN", "WAREHOUSE NAME");
+  const cCancel = findCol(idx, "CANCELADO", "CANCELED");
+  const cFecha = findCol(idx, "FECHA", "DATE");
+  const cMet = findCol(idx, "NOMBRE MÉTODO DE PAGO", "NOMBRE METODO DE PAGO", "PAYMENT METHOD NAME");
+  const cVal = findCol(idx, "VALOR MÉTODO DE PAGO", "VALOR METODO DE PAGO", "PAYMENT METHOD VALUE");
   const cTipo = findCol(idx, "TIPOCUENTA", "TIPO CUENTA");
-  const cHora = findCol(idx, "HORA");
+  const cHora = findCol(idx, "HORA", "HOUR");
   const cFranq = findCol(idx, "FRANQUICIA");
   const cAuth = findCol(idx, "CODIGOAUTORIZACION", "CÓDIGO AUTORIZACIÓN", "CODIGO AUTORIZACION");
   const cAuth2 = findCol(idx, "APPROVALCODE");
@@ -96,7 +110,8 @@ export function parseKarrotPagos(buffer: Buffer): AlegraParseResult {
     const nombre = String(cNom >= 0 ? (row[cNom] ?? "") : "").trim();
     const codigo = String(cCod >= 0 ? (row[cCod] ?? "") : "").trim();
     const keyFac = `${nombre}|${fac}`; // el número de factura se repite entre almacenes
-    if (cCancel >= 0 && String(row[cCancel] ?? "").trim().toUpperCase().startsWith("S")) {
+    // "Si" en el XLSX, "Yes" en el CSV del conector
+    if (cCancel >= 0 && /^[SY]/.test(String(row[cCancel] ?? "").trim().toUpperCase())) {
       canceladas.add(keyFac);
       continue;
     }

@@ -1,7 +1,37 @@
 # Estado de la APP y el TABLERO — retomar aquí
 
-Última sesión: 27-ago-2026. Retomar con:
+Última sesión: 10-sep-2026. Retomar con:
 **"retomemos el conciliador, lee docs/estado-app-tablero.md"**
+
+## 10-sep-2026 — Karrot por CONECTOR (sin bajar el allsales) + 7-sep estaba incompleto
+
+**Por qué "no cargaba" Karrot:** las ventas Karrot NO entran por API ni por el botón "Sincronizar"
+de /web (ese botón solo trae Shopify + Mercado Pago + Alegra). Entran únicamente por el archivo
+allsales que Paola sube en /cargar, y el último fue el del 7-sep (generado a las 17:15) → la base
+quedó en 7-sep y, además, ese día quedó INCOMPLETO (106 pagos hasta las 17:00 en vez de 154: faltaban
+~$2,3M de la tarde-noche). Regla: un allsales generado a media tarde deja el día en curso a medias;
+al día siguiente hay que recargar ese día (replace-range lo reemplaza).
+
+**Solución:** el conector MCP de Karrot (`generate-report` tipo `ALL_SALES_DETAIL_PAYMENT_METHOD`,
+startDate/endDate en UTC = día Colombia + 05:00Z) entrega EXACTAMENTE el reporte "una fila por pago"
+con encabezados en inglés (`Invoice #`, `Warehouse Code/Name`, `Canceled`, `Date`, `Hour`,
+`Payment Method Name/Value`, `CodigoAutorizacion`, `CuatrosDigitos`, `Franquicia`, `TipoCuenta`).
+`parseKarrotPagos` ahora acepta ese CSV (csv-parse, alias en inglés, "Yes" = anulada) y
+`detect.ts` lo reconoce como `karrot_pagos` → se carga por /cargar o por
+`npx tsx scripts/cargar-archivo.ts <csv>`. La respuesta del MCP (>30 KB) queda guardada en un
+archivo de tool-results; quitarle el prefijo `[Resource from ...] ` de la primera línea y cargar.
+Cargado 7→10-sep (589 pagos: 7-sep $7.770.781 · 8 $12.021.681 · 9 $5.610.395 · 10 $7.867.250).
+
+**Ventas web:** en /web Shopify + MP sí estaban al día (sync del 10-sep 23:06). Lo que "no se
+actualizaba" eran las ventas web dentro del tablero/resumen, que salen de KARROT (facturas de Elba,
+almacén PRINCIPAL, método Mercadopago) — se destraba con la misma carga de Karrot.
+
+**Nuevos almacenes en Karrot (10-sep):** `B4 PLAZET BURBUJA FLORESTA` y `B5 PLAZET FLORESTA`
+(1 venta cada uno, vendedor Jerónimo). No están en `CODIGO_TIENDA` ni en `stores.ts` → quedan
+"sin tienda". Definir con Paola si son tiendas nuevas (datáfono, terminal, extracto).
+
+**Pendiente:** no hay sincronización automática de nada (ni cron en Vercel ni rutina): Shopify/MP/
+Alegra dependen del botón de /web y Karrot de una carga (archivo o conector vía Claude).
 
 ## 07-sep-2026 — regla de fecha QR + notas compartidas con fotos de comprobantes
 

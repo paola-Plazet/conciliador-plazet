@@ -33,6 +33,11 @@ export function detectFileType(filename: string, buffer: Buffer): DetectionResul
   if (head.includes("TRANSACTION_DATE;") && head.includes("SETTLEMENT_DATE")) {
     return { kind: "mercadopago", reason: "Liquidaciones Mercado Pago (settlement CSV)" };
   }
+  // CSV del conector de Karrot (MCP ALL_SALES_DETAIL_PAYMENT_METHOD): mismo
+  // reporte allsales "una fila por pago", encabezados en inglés
+  if (head.includes("INVOICE #") && head.includes("PAYMENT METHOD VALUE")) {
+    return { kind: "karrot_pagos", reason: "Reporte de ventas Karrot (CSV del conector, una fila por pago)" };
+  }
 
   // 2) Intento como libro (xls / xlsx)
   try {
