@@ -17,7 +17,7 @@ lectura):** el descuento por transacción es EXACTO y constante: comisión **1,9
 retefuente 1,5 % + reteICA 0,414 % Bogotá (B1/B2/B3) ó 0,7 % Cali (JP) = neto 96,096 % / 95,81 %.
 Sin IVA ni 4x1000 en el abono (columnas VALOR RETE IVA y PROVISION = 0 en el "Reporte Tarjeta
 Original" de Conciliar). 172/172 lotes (día de venta + terminal + franquicia) coinciden al peso con
-los "ABONO NETO VISA/MASTER/AMEX" de Bancolombia; rezago 1 día hábil (lunes = vie+sáb+dom). Por código
+los "ABONO NETO VISA/MASTER/AMEX" de Bancolombia; rezago 1 día hábil (lunes = vie+sáb+dom). **Cuándo publica Conciliar** (medido con 20 descargas de Downloads, fecha de descarga vs última transacción): las transacciones del día D salen en el reporte el día hábil siguiente y en la TARDE (descargas de lunes a las 10:30-15:30 nunca traen el viernes ni el fin de semana; descargas de 16:00 en adelante sí traen el día anterior). Por eso un pago del viernes 'aparece' el lunes por la noche (3 días) y con festivo el martes (4 días): bajar el reporte en la noche. Por código
 de autorización, 3.192 pagos POS↔Conciliar con 0 días de diferencia (la fecha del datáfono es la del
 POS). Karrot marca "AMEX" en muchos pagos que en Conciliar son Visa/MC (solo 4 AMEX reales en 3 sem.).
 
