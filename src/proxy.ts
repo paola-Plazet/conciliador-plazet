@@ -6,7 +6,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { validarSesion, SESSION_COOKIE } from "./lib/sso";
 
-const PUBLICAS = ["/acceso", "/api/sso", "/api/salir"];
+// /api/cron/* no usa sesión: cada ruta valida su propio bearer (CRON_SECRET de
+// Vercel o KARROT_PUSH_TOKEN de la rutina de Claude), ver lib/cron-auth.ts
+const PUBLICAS = ["/acceso", "/api/sso", "/api/salir", "/api/cron/"];
 // rutas de escritura reservadas para ADMIN
 const SOLO_ADMIN = ["/api/config", "/api/months"];
 
