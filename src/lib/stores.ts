@@ -1,6 +1,21 @@
 // Definición de las tiendas de Habbie y utilidades de mapeo.
 // Mapeo de terminales del datafono CONFIRMADO por el cliente.
 
+/** Contrato con el centro comercial (tiendas con recaudo CENTRO_COMERCIAL):
+ * el centro comercial liquida el arriendo por corte de 10 días y lo descuenta
+ * del giro. Valores sin IVA. */
+export interface ContratoCentroComercial {
+  ubicacion: string;
+  /** cuota mínima por corte (decadal), sin IVA */
+  cuotaMinimaDecadal: number;
+  /** canon variable sobre las ventas reportadas (0.13 = 13 %); se cobra el mayor entre mínimo y variable */
+  variablePct: number;
+  /** publicidad sobre las ventas reportadas (0.01 = 1 %), se suma siempre */
+  publicidadPct: number;
+  /** IVA sobre canon y publicidad (0.19) */
+  ivaPct: number;
+}
+
 export interface StoreDef {
   code: string; // identificador interno
   name: string;
@@ -13,6 +28,8 @@ export interface StoreDef {
    * recauda efectivo + datáfono, corta cada 10 días y paga 2-3 días hábiles
    * después (ver centro-comercial.ts). El QR sí entra a Bancolombia. */
   recaudo?: "CENTRO_COMERCIAL";
+  /** solo CENTRO_COMERCIAL: cómo liquida el arriendo que descuenta de cada corte */
+  contratoCC?: ContratoCentroComercial;
 }
 
 export const STORES: StoreDef[] = [
@@ -57,17 +74,12 @@ export const STORES: StoreDef[] = [
     terminalMaster: "000BI3R1",
   },
   // Floresta (Bogotá), abiertas en sep-2026: la caja es del centro comercial.
-  // Sin datáfono propio ni referencia de consignación. Códigos = "Código
-  // Almacén" de Karrot (B4 = burbuja, B5 = local).
-  {
-    code: "B4",
-    name: "Floresta Burbuja",
-    alegraBodega: "PLAZET BURBUJA FLORESTA",
-    establishment: "",
-    terminalVisa: "",
-    terminalMaster: "",
-    recaudo: "CENTRO_COMERCIAL",
-  },
+  // Sin datáfono propio ni referencia de consignación. B5 = local frente a
+  // Colfondos; B6 = isla (burbuja) junto a la Droguería Comercial Cafam
+  // (Karrot la manda como "B4": el parser la mapea a B6). Contrato Floresta
+  // (Paola 11-sep): canon = mayor entre la cuota mínima decadal y el 13 % de
+  // las ventas reportadas, + publicidad 1 %, + IVA 19 %; el centro comercial
+  // lo descuenta del giro de cada corte, que entra a Bancolombia.
   {
     code: "B5",
     name: "Floresta",
@@ -76,6 +88,17 @@ export const STORES: StoreDef[] = [
     terminalVisa: "",
     terminalMaster: "",
     recaudo: "CENTRO_COMERCIAL",
+    contratoCC: { ubicacion: "Local frente a Colfondos", cuotaMinimaDecadal: 1776337, variablePct: 0.13, publicidadPct: 0.01, ivaPct: 0.19 },
+  },
+  {
+    code: "B6",
+    name: "Floresta Isla",
+    alegraBodega: "PLAZET BURBUJA FLORESTA",
+    establishment: "",
+    terminalVisa: "",
+    terminalMaster: "",
+    recaudo: "CENTRO_COMERCIAL",
+    contratoCC: { ubicacion: "Isla junto a la Droguería Comercial Cafam", cuotaMinimaDecadal: 1152849, variablePct: 0.13, publicidadPct: 0.01, ivaPct: 0.19 },
   },
 ];
 
@@ -125,8 +148,9 @@ const PREFIX_INDEX = new Map<string, string>([
   ["B2", "B2"],
   ["B3", "B3"],
   ["C1", "JP"],
-  ["B4", "B4"],
+  ["B4", "B6"], // Karrot codifica B4 la isla de Floresta; para Paola es B6
   ["B5", "B5"],
+  ["B6", "B6"],
 ]);
 
 /** Resuelve tienda a partir del número de factura (p.ej. "B33048" -> B3).

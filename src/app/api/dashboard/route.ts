@@ -414,12 +414,16 @@ export async function GET(request: NextRequest) {
     const cortes = esCC ? ledger.summary.cortesCC.filter((c) => c.storeCode === st.code && (inMonth(c.desde) || inMonth(c.hasta))) : [];
     const ccTot = esCC
       ? {
-          venta: cortes.reduce((a, c) => a + c.total, 0),
+          venta: cortes.reduce((a, c) => a + c.recaudado, 0), // efectivo + datáfono (lo recauda el centro comercial)
           efectivo: cortes.reduce((a, c) => a + c.ventaEfectivo, 0),
           datafono: cortes.reduce((a, c) => a + c.ventaDatafono, 0),
+          ventasReportadas: cortes.reduce((a, c) => a + c.ventasReportadas, 0),
+          arriendo: cortes.reduce((a, c) => a + (c.arriendo?.total ?? 0), 0),
+          aRecibir: cortes.filter((c) => c.netoEsperado > 0).reduce((a, c) => a + c.netoEsperado, 0),
+          habbiePaga: cortes.filter((c) => c.netoEsperado < 0).reduce((a, c) => a - c.netoEsperado, 0),
           pagado: cortes.reduce((a, c) => a + (c.pago?.amount ?? 0), 0),
-          enPlazo: cortes.filter((c) => c.estado === "EN_PLAZO").reduce((a, c) => a + c.total, 0),
-          vencido: cortes.filter((c) => c.estado === "VENCIDO").reduce((a, c) => a + c.total, 0),
+          enPlazo: cortes.filter((c) => c.estado === "EN_PLAZO").reduce((a, c) => a + c.netoEsperado, 0),
+          vencido: cortes.filter((c) => c.estado === "VENCIDO").reduce((a, c) => a + c.netoEsperado, 0),
           dif: cortes.filter((c) => c.pago).reduce((a, c) => a + c.dif, 0),
         }
       : null;

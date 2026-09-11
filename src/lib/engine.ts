@@ -820,8 +820,10 @@ export function conciliar(input: ConciliationInput): ConciliationSummary {
     esCentroComercial(s.storeCode) &&
     (s.method === "EFECTIVO" || s.method === "TARJETA_CREDITO" || s.method === "TARJETA_DEBITO");
   const ventasDirectas = input.sales.filter((s) => !esVentaCC(s));
-  const ventasCC = input.sales.filter(esVentaCC);
-  const cc = calcularCortesCC(ventasCC, input.bank, input.qrBank ?? [], holidays, tolerance);
+  // al corte van TODAS las ventas de esas tiendas (la base del arriendo son las
+  // ventas reportadas); el centro comercial solo recauda efectivo + datáfono
+  const ventasCC = input.sales.filter((s) => esCentroComercial(s.storeCode));
+  const cc = calcularCortesCC(ventasCC, input.qrBank ?? [], holidays);
   // los abonos que resultaron ser pagos del centro comercial no son QR de clientes
   const usadoCC = new Set(
     cc.pagosUsados.filter((p) => p.cuenta === "BANCOLOMBIA").map((p) => `${p.date}|${Math.round(p.amount)}|${p.concept}`),
@@ -841,9 +843,11 @@ export function conciliar(input: ConciliationInput): ConciliationSummary {
   annotateQrDiversion(efectivo.results, ventasDirectas, qrBankLibre, tolerance);
 
   // Cortes del centro comercial: los EN_PLAZO aún no se exigen (como el
-  // efectivo en plazo); los pagados y los vencidos sí entran a los resultados
+  // efectivo en plazo) y los HABBIE_PAGA (arriendo > recaudo) no traen giro;
+  // los pagados y los vencidos sí entran a los resultados, por el NETO
+  // (recaudado − arriendo) que el centro comercial debe girar
   const ccResults: ConciliationResult[] = cc.cortes
-    .filter((c) => c.estado !== "EN_PLAZO")
+    .filter((c) => c.estado !== "EN_PLAZO" && c.estado !== "HABBIE_PAGA")
     .map((c) => ({
       id: `CC:${c.storeCode}:${c.hasta}`,
       channel: "CENTRO_COMERCIAL" as const,
@@ -853,8 +857,8 @@ export function conciliar(input: ConciliationInput): ConciliationSummary {
       depositDate: c.pago?.date ?? c.pagoEsperado,
       depositAmount: c.pago?.amount ?? 0,
       salesDates: c.dias.map((d) => d.date),
-      salesAmount: c.total,
-      difference: (c.pago?.amount ?? 0) - c.total,
+      salesAmount: c.netoEsperado,
+      difference: (c.pago?.amount ?? 0) - c.netoEsperado,
       status: (c.estado === "CUADRA" ? "CUADRA" : c.estado === "DIFERENCIA" ? "DIFERENCIA" : "SIN_CONCILIAR") as ConciliationResult["status"],
       note: c.nota,
     }));

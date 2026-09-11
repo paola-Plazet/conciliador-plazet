@@ -99,16 +99,18 @@ interface Totales {
   qrFaltaTotal: number; qrSobraTotal: number;
   mercadopago: number; rappi: number; addi: number; otros: number;
   /** solo tiendas de CENTRO COMERCIAL (Floresta): efectivo + datáfono por cortes */
-  cc?: { venta: number; efectivo: number; datafono: number; pagado: number; enPlazo: number; vencido: number; dif: number } | null;
+  cc?: { venta: number; efectivo: number; datafono: number; ventasReportadas: number; arriendo: number; aRecibir: number; habbiePaga: number; pagado: number; enPlazo: number; vencido: number; dif: number } | null;
 }
 /** Corte de 10 días del centro comercial (efectivo + datáfono) y su pago */
 interface Corte {
   storeCode: string; desde: string; hasta: string;
-  dias: { date: string; efectivo: number; datafono: number }[];
-  ventaEfectivo: number; ventaDatafono: number; total: number;
+  dias: { date: string; efectivo: number; datafono: number; otros: number }[];
+  ventaEfectivo: number; ventaDatafono: number; ventaOtros: number; ventasReportadas: number; recaudado: number;
+  arriendo: { canonMinimo: number; canonVariable: number; canon: number; publicidad: number; iva: number; total: number; detalle: string } | null;
+  netoEsperado: number;
   pagoEsperado: string; pagoLimite: string;
   pago: { cuenta: "ALIANZA" | "BANCOLOMBIA"; date: string; amount: number; concept: string } | null;
-  dif: number; estado: "EN_PLAZO" | "VENCIDO" | "CUADRA" | "DIFERENCIA"; nota?: string;
+  dif: number; estado: "EN_PLAZO" | "VENCIDO" | "CUADRA" | "DIFERENCIA" | "HABBIE_PAGA"; nota?: string;
 }
 interface ApiData {
   months: string[]; month: string; rango?: { from: string; to: string } | null; stores: { code: string; name: string; recaudo?: string | null }[];
@@ -348,9 +350,11 @@ export default function TiendasPage() {
             <CardCanal icon={<Landmark size={18} />} titulo="Centro comercial (efectivo + datáfono)"
               venta={tot.cc.venta} recaudo={tot.cc.pagado}
               faltante={tot.cc.vencido - tot.cc.dif}
-              extra={tot.cc.enPlazo > 0
-                ? `⏳ Corte en plazo (el centro comercial paga 2-3 días hábiles después): ${cop(tot.cc.enPlazo)}`
-                : "Cortes cada 10 días · detalle abajo ↓"} />
+              extra={[
+                `Arriendo descontado ${cop(tot.cc.arriendo)} · a recibir ${cop(tot.cc.aRecibir)}`,
+                tot.cc.habbiePaga > 0 ? `Habbie debe ${cop(tot.cc.habbiePaga)} (arriendo > recaudo)` : "",
+                tot.cc.enPlazo > 0 ? `⏳ En plazo: ${cop(tot.cc.enPlazo)}` : "",
+              ].filter(Boolean).join(" · ")} />
           )}
           {ver("efectivo") && !tot.cc && (
             <CardCanal icon={<Banknote size={18} />} titulo="Efectivo"
@@ -389,8 +393,9 @@ export default function TiendasPage() {
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-700">Cortes del centro comercial — efectivo + datáfono</h2>
           <p className="mt-1 text-xs text-gray-500">
-            La caja es del centro comercial: recauda el efectivo y el datáfono, corta cada 10 días (1–10, 11–20, 21–fin de mes) y paga 2-3 días hábiles después.
-            El pago se busca en los extractos de Alianza y Bancolombia por el total del corte. El QR sí entra directo a Bancolombia (canal QR).
+            La caja es del centro comercial: recauda el efectivo y el datáfono, corta cada 10 días (1–10, 11–20, 21–fin de mes), descuenta el arriendo
+            (el mayor entre la cuota mínima decadal y el 13 % de las ventas reportadas, más publicidad 1 %, más IVA) y gira el neto 2-3 días hábiles después.
+            El giro se busca en el extracto de Bancolombia. El QR sí entra directo a Bancolombia (canal QR).
           </p>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">
@@ -399,7 +404,10 @@ export default function TiendasPage() {
                   <th className="px-3 py-2">Corte</th>
                   <th className="px-3 py-2 text-right">Efectivo</th>
                   <th className="px-3 py-2 text-right">Datáfono</th>
-                  <th className="px-3 py-2 text-right">Total</th>
+                  <th className="px-3 py-2 text-right">Recaudado</th>
+                  <th className="px-3 py-2 text-right">Ventas reportadas</th>
+                  <th className="px-3 py-2 text-right">Arriendo (IVA incl.)</th>
+                  <th className="px-3 py-2 text-right">A recibir</th>
                   <th className="px-3 py-2">Pago esperado</th>
                   <th className="px-3 py-2">Pago recibido</th>
                   <th className="px-3 py-2 text-right">Dif</th>
@@ -412,7 +420,10 @@ export default function TiendasPage() {
                     <td className="whitespace-nowrap px-3 py-2 font-medium text-gray-700">{diaCorto(c.desde)} → {diaCorto(c.hasta)}<div className="text-[10px] font-normal text-gray-400">{c.dias.length} día{c.dias.length === 1 ? "" : "s"} con venta</div></td>
                     <td className="px-3 py-2 text-right">{cop(c.ventaEfectivo)}</td>
                     <td className="px-3 py-2 text-right">{cop(c.ventaDatafono)}</td>
-                    <td className="px-3 py-2 text-right font-semibold">{cop(c.total)}</td>
+                    <td className="px-3 py-2 text-right">{cop(c.recaudado)}</td>
+                    <td className="px-3 py-2 text-right text-gray-600" title="Base del arriendo: todo lo facturado en la tienda durante el corte (efectivo + datáfono + QR + otros)">{cop(c.ventasReportadas)}</td>
+                    <td className="px-3 py-2 text-right text-gray-600" title={c.arriendo?.detalle ?? "Sin contrato configurado"}>{c.arriendo ? `−${cop(c.arriendo.total)}` : "—"}</td>
+                    <td className={`px-3 py-2 text-right font-semibold ${c.netoEsperado < 0 ? "text-red-600" : ""}`} title={c.netoEsperado < 0 ? "El arriendo supera lo recaudado: Habbie le debe esto al centro comercial" : "Recaudado − arriendo"}>{cop(c.netoEsperado)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-600">{diaCorto(c.pagoEsperado)}<div className="text-[10px] text-gray-400">se busca hasta el {diaCorto(c.pagoLimite)}</div></td>
                     <td className="px-3 py-2">
                       {c.pago
@@ -424,6 +435,7 @@ export default function TiendasPage() {
                       {c.estado === "CUADRA" ? <span className="rounded-full bg-plazet-50 px-2 py-0.5 text-[11px] font-semibold text-plazet-700">cuadra</span>
                         : c.estado === "DIFERENCIA" ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">diferencia</span>
                         : c.estado === "VENCIDO" ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">sin pago · vencido</span>
+                        : c.estado === "HABBIE_PAGA" ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">Habbie paga</span>
                         : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">⏳ en plazo</span>}
                       {c.nota && <div className="mt-0.5 max-w-xs text-[10px] text-gray-400">{c.nota}</div>}
                     </td>

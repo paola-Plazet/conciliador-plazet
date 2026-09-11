@@ -33,8 +33,8 @@ better-sqlite3), TailwindCSS 4, lucide-react. Lectura de Excel/CSV con `xlsx` y 
 
 ### Núcleo de negocio (`src/lib/`)
 - `types.ts` — tipos del dominio (SaleInvoice, BankCashEntry, DataphoneEntry, ConciliationResult, StoreAlert)
-- `stores.ts` — definición de las tiendas (B1/B2/B3/JP/PRIN + Floresta B4/B5 con `recaudo: CENTRO_COMERCIAL`) + mapeo bodega/establecimiento → tienda
-- `centro-comercial.ts` — cortes de 10 días del centro comercial (Floresta): efectivo+datáfono los recauda el centro comercial y paga 2-3 días hábiles después; canal CENTRO_COMERCIAL
+- `stores.ts` — definición de las tiendas (B1/B2/B3/JP/PRIN + Floresta B5 local / B6 isla con `recaudo: CENTRO_COMERCIAL` y `contratoCC`) + mapeo bodega/establecimiento → tienda
+- `centro-comercial.ts` — cortes de 10 días del centro comercial (Floresta): efectivo+datáfono los recauda el centro comercial, descuenta el arriendo (mínimo decadal vs 13 % + publicidad 1 % + IVA) y gira el neto a Bancolombia 2-3 días hábiles después; canal CENTRO_COMERCIAL
 - `sync.ts` — sincronizaciones Shopify/Mercado Pago/Alegra (botón de /web y cron diario `/api/cron/sync`); Karrot entra por `/api/cron/karrot` (rutina de Claude con el conector)
 - `holidays.ts` — festivos colombianos calculados (Ley Emiliani + Pascua)
 - `dates.ts` — días hábiles, `expectedSalesDays`, `businessDaysBetween` (atraso)

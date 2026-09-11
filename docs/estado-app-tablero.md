@@ -21,7 +21,23 @@ los "ABONO NETO VISA/MASTER/AMEX" de Bancolombia; rezago 1 día hábil (lunes = 
 de autorización, 3.192 pagos POS↔Conciliar con 0 días de diferencia (la fecha del datáfono es la del
 POS). Karrot marca "AMEX" en muchos pagos que en Conciliar son Visa/MC (solo 4 AMEX reales en 3 sem.).
 
-## 11-sep-2026 — Floresta (B4/B5, recaudo por CENTRO COMERCIAL) + todo automático
+## 11-sep-2026 — Floresta (B5 local / B6 isla, recaudo por CENTRO COMERCIAL) + todo automático
+
+**Contrato Floresta (Paola, 11-sep tarde) — el centro comercial DESCUENTA EL ARRIENDO del giro y paga
+el neto a BANCOLOMBIA.** Códigos definitivos: `B5` = local frente a Colfondos (cuota mínima
+$1.776.337 decadal + IVA = $5.329.012/mes + IVA) y `B6` = isla/burbuja junto a la Droguería Comercial
+Cafam (cuota mínima $1.152.849 decadal + IVA = $3.458.546/mes + IVA). Karrot codifica la isla como
+"B4": `CODIGO_TIENDA`/`PREFIX_INDEX` la mapean a B6 (Store y Sale ya migrados B4→B6). Ambos: variable
+13 % sobre ventas reportadas, publicidad 1 %, liquidación = el MAYOR entre cuota mínima y variable (+
+publicidad + IVA 19 %). En `stores.ts` → `contratoCC`; `liquidarArriendo()` en `centro-comercial.ts`.
+Cada corte: recaudado (efectivo + datáfono) − arriendo = **neto a recibir**; el giro se busca SOLO en
+Bancolombia (abonos que no son PAGO QR/LLAVE) por ese neto (±$1.000). Si el arriendo supera lo
+recaudado → estado `HABBIE_PAGA` (Habbie le debe al centro comercial; no entra a resultados). SUPUESTOS
+por confirmar con la primera liquidación real: "ventas reportadas" = todo lo facturado en la tienda
+(incluye QR y otros); la publicidad también lleva IVA; sin prorrateo del mínimo en cortes parciales.
+Tablero: columnas Recaudado / Ventas reportadas / Arriendo (tooltip con el desglose) / A recibir.
+(El texto de abajo, escrito en la mañana, hablaba de B4 y de Alianza: ya no aplica.)
+
 
 **Tiendas nuevas (Paola 10-sep):** `B4 Floresta Burbuja` (PLAZET BURBUJA FLORESTA) y `B5 Floresta`
 (PLAZET FLORESTA), códigos = "Código Almacén" de Karrot. En `stores.ts` con `recaudo: "CENTRO_COMERCIAL"`,
