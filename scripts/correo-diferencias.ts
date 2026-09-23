@@ -147,9 +147,16 @@ async function main() {
           const n = -e.dif; // > 0 = falta
           filas.push({ key: `${store}|${d.date}|EFE`, store, date: d.date, canal: "Efectivo", dif: n > 0 ? falta(n) : sobra(-n), detalle: await detalleEfectivo(store, d) });
         }
-        // DATÁFONO: cruce exacto transacción a transacción (falta y sobra sin netear)
-        if (!d.tar.sinCargar && !d.tar.cc && (d.tar.falta > 0 || d.tar.sobra > 0) && !manualTar.has(`${store}|${d.date}`)) {
-          const dif = [d.tar.falta > 0 ? falta(d.tar.falta) : "", d.tar.sobra > 0 ? sobra(d.tar.sobra) : ""].filter(Boolean).join(" · ");
+        // DATÁFONO: cruce exacto transacción a transacción (falta y sobra sin netear).
+        // Si ese día falta y sobra LO MISMO no sale (Paola): es el mismo cobro partido o
+        // cruzado entre transacciones (ej. JP 18-jul: 224.900 cobrado 114.900 + 110.000).
+        const tarNeto = Math.abs(d.tar.falta - d.tar.sobra) < 1;
+        if (!d.tar.sinCargar && !d.tar.cc && (d.tar.falta > 0 || d.tar.sobra > 0) && !tarNeto && !manualTar.has(`${store}|${d.date}`)) {
+          // falta y sobra casi iguales (cobro cruzado + redondeo): se muestra solo el neto
+          const net = d.tar.falta - d.tar.sobra;
+          const dif = d.tar.falta > 0 && d.tar.sobra > 0 && Math.abs(net) <= 1000
+            ? (net > 0 ? falta(net) : sobra(-net))
+            : [d.tar.falta > 0 ? falta(d.tar.falta) : "", d.tar.sobra > 0 ? sobra(d.tar.sobra) : ""].filter(Boolean).join(" · ");
           filas.push({ key: `${store}|${d.date}|TAR`, store, date: d.date, canal: "Datáfono", dif, detalle: await detalleDatafono(store, d.date) });
         }
         // QR por tienda (pagos del banco asignados a la tienda por valor)
