@@ -53,7 +53,16 @@ async function main() {
     const fechas = [...fechasCierre].sort();
     await prisma.sale.deleteMany({ where: { source: SOURCE_DEVOLUCION, date: { in: fechas } } });
     const cierres = await prisma.cashierClose.findMany({ where: { date: { in: fechas }, returns: { not: 0 }, storeCode: { not: null } } });
-    const notas = await prisma.creditNote.findMany({ where: { date: { in: fechas } }, orderBy: { ncNumber: "asc" } });
+    const exacta = (n: { net: number; date: string }, c: (typeof cierres)[number]) => c.date === n.date && Math.abs(-c.returns - n.net) <= 50;
+    const notas = (await prisma.creditNote.findMany({ where: { date: { in: fechas } } }))
+      // sin tienda (la venta original no está cargada): si UN solo cierre del día devolvió exacto ese valor, es de esa tienda
+      .map((n) => {
+        if (n.storeCode) return n;
+        const cs = cierres.filter((c) => exacta(n, c));
+        return cs.length === 1 ? { ...n, storeCode: cs[0].storeCode, location: cs[0].location } : n;
+      })
+      // primero las que calzan exacto con un cierre (para que otra no les tome la devolución), luego por número
+      .sort((a, b) => Number(cierres.some((c) => c.storeCode === b.storeCode && exacta(b, c))) - Number(cierres.some((c) => c.storeCode === a.storeCode && exacta(a, c))) || Number(a.ncNumber) - Number(b.ncNumber));
     const filas: Prisma.SaleCreateManyInput[] = [];
     for (const n of notas) {
       const orig = n.orderReceipt
@@ -63,6 +72,7 @@ async function main() {
       const metodoOriginal = [...new Set(orig.map((v) => (v.method === "OTRO" && v.bodega.includes(" · ") ? v.bodega.split(" · ").pop()! : v.method)))].join(" + ") || null;
       if (!n.storeCode) {
         await prisma.creditNote.update({ where: { id: n.id }, data: { metodoOriginal, metodoDevolucion: null } });
+        if (Math.abs(n.net) >= 5_000_000) continue; // traslados de inventario NL facturados (jul), no son ventas
         console.log(`   NC ${n.ncNumber} ${n.date} fac ${n.orderReceipt} ${fmt(n.net)} · venta ${metodoOriginal ?? "?"} fuera de las tiendas (web) — no toca el cuadre de tiendas`);
         continue;
       }
@@ -71,7 +81,8 @@ async function main() {
       const libres = cierres
         .filter((c) => c.storeCode === n.storeCode && c.date === n.date && c.returns < 0)
         .sort((x, y) => Number(mismoMetodo(y)) - Number(mismoMetodo(x)) || x.returns - y.returns);
-      const una = libres.find((c) => -c.returns >= n.net - 50 && mismoMetodo(c)) ?? libres.find((c) => -c.returns >= n.net - 50);
+      const una = libres.find((c) => exacta(n, c) && mismoMetodo(c)) ?? libres.find((c) => exacta(n, c))
+        ?? libres.find((c) => -c.returns >= n.net - 50 && mismoMetodo(c)) ?? libres.find((c) => -c.returns >= n.net - 50);
       // si ningún método solo alcanza, la devolución se partió (ej. $56.000 datáfono + $100 efectivo)
       const partes: { c: (typeof cierres)[number]; monto: number }[] = [];
       if (una) partes.push({ c: una, monto: Math.min(n.net, -una.returns) });
@@ -80,9 +91,16 @@ async function main() {
         for (const c of libres) { if (resta <= 0) break; const m = Math.min(resta, -c.returns); partes.push({ c, monto: m }); resta -= m; }
       }
       const metodoDevolucion = partes.map((x) => x.c.method).join(" + ") || null;
-      await prisma.creditNote.update({ where: { id: n.id }, data: { metodoOriginal, metodoDevolucion } });
+      await prisma.creditNote.update({ where: { id: n.id }, data: { metodoOriginal, metodoDevolucion, storeCode: n.storeCode, location: n.location } });
       if (!partes.length) { console.log(`   ⚠ NC ${n.ncNumber} ${n.date} ${n.storeCode} fac ${n.orderReceipt} ${fmt(n.net)} (pagada con ${metodoOriginal ?? "?"}): el cierre de caja no muestra devolución — ¿se anuló sin devolver plata?`); continue; }
       const tarjeta = orig.find((v) => v.method.startsWith("TARJETA"));
+      if (!orig.length) {
+        // la factura anulada no está entre las ventas cargadas (Karrot no trae las anuladas): no hay nada
+        // que cancelar, así que la devolución tampoco se descuenta (si no, saldría como sobra)
+        for (const { c, monto } of partes) c.returns += monto;
+        console.log(`   NC ${n.ncNumber} ${n.date} ${n.storeCode} fac ${n.orderReceipt} ${fmt(n.net)} · factura anulada (no está en las ventas) → devuelta por ${metodoDevolucion}; no se descuenta`);
+        continue;
+      }
       for (const { c, monto } of partes) {
         c.returns += monto; // lo que queda del cierre sin explicar
         const metodo = metodoCierre(c.method) === "TARJETA_DEBITO" && tarjeta ? tarjeta.method : metodoCierre(c.method);

@@ -24,6 +24,11 @@ Regla de Paola: todos los días se tienen en cuenta las NC, cada una con su mét
   (2) misma autorización pero otro valor → se busca una 2ª transacción que sume (fac 9349 = 56.300 + 7.900);
   (3) al final, devolución suelta del POS = venta suelta del mismo valor → se cancelan. Regresión abr–sep:
   13 de 603 días mejoran a 0, ninguno empeora. Modal: la devolución se ve como "NC 53 (fac 8787)".
+- Asignación NC↔cierre: primero las que calzan EXACTO (NC ordenadas por número), NC sin tienda se ubica por el
+  único cierre del día que devolvió ese valor exacto. Si la factura anulada no está en las ventas (Karrot no trae
+  las anuladas: NC 2, 7, 19, 27, 28, 30, 33, 34 de jul–ago) NO se crea devolución (no hay nada que cancelar).
+  NC de traslados NL de julio ($10–12 M) se ignoran. Backfill jul–sep hecho 22-sep. Sin devolución en el cierre
+  (¿anuladas sin devolver plata? revisar con Jero): NC 3, 4, 18, 20, 24, 29, 36, 38, 39, 40, 41, 43, 45, 46, 64.
 - Scripts: `scripts/nc-estado.ts` (NC + métodos + devoluciones de sept), `scripts/nc-datafono-check.ts`.
 
 ## 15-sep-2026 — EXTRACTOS BANCARIOS ENTRAN SOLOS (robot local, ya no se suben por /cargar)
