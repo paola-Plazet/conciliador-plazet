@@ -19,6 +19,13 @@ const REF_FIXES: { date: string; amount: number; from: string; to: string }[] = 
   { date: "2026-08-10", amount: 1887650, from: "3138845101", to: "3102874360" }, // ventas Plaza 6+7-ago
 ];
 
+/** Celulares que cambiaron de tienda: desde la fecha, la referencia se trata como la de otra tienda.
+ * 3209052268 era de Unicentro Norte en abril (Natural Light); desde sep-2026 consigna Plaza
+ * (confirmado por Paola 23-sep-2026: 21-sep $1.065.100 y 22-sep $1.017.050). */
+const REF_DESDE: { ref: string; desde: string; to: string }[] = [
+  { ref: "3209052268", desde: "2026-09-01", to: "3102874360" }, // → Plaza de las Américas
+];
+
 export interface BancoParseResult {
   entries: BankCashEntry[];
   totalIngresos: number;
@@ -94,6 +101,8 @@ export function parseBanco(
       reference = mRec[1];
       const fix = REF_FIXES.find((f) => f.date === date && f.from === reference && Math.abs(f.amount - amount) < 1);
       if (fix) reference = fix.to;
+      const cambio = REF_DESDE.find((f) => f.ref === reference && date >= f.desde);
+      if (cambio) reference = cambio.to;
     } else if (RE_CONSIG.test(conceptStr)) {
       kind = "CONSIG_TRANSFER";
     }
