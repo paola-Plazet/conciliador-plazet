@@ -49,3 +49,7 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# datos locales (ventas Karrot con datos de clientes, estado del correo diario)
+data-karrot/
+data-correo/
