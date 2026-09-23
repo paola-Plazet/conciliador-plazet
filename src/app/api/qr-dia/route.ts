@@ -77,6 +77,7 @@ export async function GET(req: NextRequest) {
       store: f.storeCode ?? "?",
       storeName: f.storeCode ? (nombre.get(f.storeCode) ?? f.storeCode) : "Sin tienda",
       amount: f.amount,
+      vendedor: f.vendedor,
       cuentaAlegra,
       pago: best ? { date: best.date, amount: best.amount, payer: best.payer } : par,
     };

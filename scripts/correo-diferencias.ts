@@ -1,21 +1,25 @@
-// Correo diario (9 am) a Jero con las diferencias de la conciliación de tiendas.
+// Correo diario (9 am) a Jero con TODAS las diferencias de la conciliación de
+// tiendas que siguen sin resolver (meses no cerrados), por tienda y por canal:
+// efectivo, datáfono y QR por tienda — lo mismo que muestra /tiendas (se arma
+// con /api/dashboard, /api/datafono-dia y /api/qr-dia, sin lógica propia).
 // Lo corre la tarea de Windows "Conciliador correo 9am" (robot-bancos/diario_9am.py)
 // DESPUÉS de cargar las ventas de Karrot; los bancos ya los carga el robot cada hora.
 //
-//   npx tsx scripts/correo-diferencias.ts            → envía y marca como reportadas
-//   npx tsx scripts/correo-diferencias.ts --prueba   → envía solo a SMTP_USER, sin marcar
+//   npx tsx scripts/correo-diferencias.ts            → envía a Jero y guarda qué ya salió
+//   npx tsx scripts/correo-diferencias.ts --prueba   → envía solo a SMTP_USER, sin guardar
 //   npx tsx scripts/correo-diferencias.ts --html x   → escribe el HTML en x, no envía
 //
-// "Nuevas" = diferencias que no salieron en un correo anterior (data-correo/reportadas.json),
-// así las que llegan con rezago (datáfono publica al día hábil siguiente) salen el día que
-// aparecen. Abajo va el resumen de lo que sigue abierto del mes y el efectivo sin consignar.
+// Resuelta = día que ya cuadra, aceptado a mano (MANUAL) o de un mes cerrado.
+// Las que no salieron en el correo anterior se marcan NUEVA (data-correo/reportadas.json).
 import fs from "fs";
 import path from "path";
 import nodemailer from "nodemailer";
+import { NextRequest } from "next/server";
 import { prisma } from "../src/lib/db";
 import { computeLedger } from "../src/lib/ledger";
-import { cruzarDatafono } from "../src/lib/datafono-cruce";
-import type { ConciliationResult } from "../src/lib/types";
+import { GET as dashboardGET } from "../src/app/api/dashboard/route";
+import { GET as datafonoDiaGET } from "../src/app/api/datafono-dia/route";
+import { GET as qrDiaGET } from "../src/app/api/qr-dia/route";
 
 const APP = "https://conciliador-plazet.vercel.app";
 const ESTADO = path.join(__dirname, "..", "data-correo", "reportadas.json");
@@ -25,6 +29,7 @@ const HTML_OUT = args.includes("--html") ? args[args.indexOf("--html") + 1] : nu
 
 const cop = (n: number) => (n < 0 ? "−" : "") + "$" + Math.round(Math.abs(n)).toLocaleString("es-CO");
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MESES_LARGO = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 const dia = (d: string) => {
   const [y, m, dd] = d.split("-").map(Number);
@@ -37,7 +42,12 @@ const nombreCorto = (n: string | null | undefined) => {
   return w.length >= 4 ? `${w[0]} ${w[2]}` : w.length === 3 ? `${w[0]} ${w[1]}` : w.join(" ");
 };
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const CANAL: Record<string, string> = { EFECTIVO: "Efectivo", DATAFONO: "Datáfono", QR: "QR", CENTRO_COMERCIAL: "Centro comercial" };
+const ROJO = "#b91c1c", AMBAR = "#b45309";
+const falta = (n: number) => `<span style="color:${ROJO};font-weight:600">falta ${cop(n)}</span>`;
+const sobra = (n: number) => `<span style="color:${AMBAR};font-weight:600">sobra ${cop(n)}</span>`;
+
+const api = async (handler: (r: NextRequest) => Promise<Response>, url: string) =>
+  (await handler(new NextRequest(`http://local${url}`))).json();
 
 function leerEstado(): Set<string> {
   try {
@@ -47,9 +57,8 @@ function leerEstado(): Set<string> {
   }
 }
 
-/** vendedoras con ventas en la tienda en esos días (opcionalmente de un método) */
-async function vendedoras(store: string | null, dates: string[], methods?: string[]): Promise<string[]> {
-  if (!store || dates.length === 0) return [];
+/** vendedoras con ventas en la tienda esos días (de un método, si se indica) */
+async function vendedoras(store: string, dates: string[], methods?: string[]): Promise<string[]> {
   const rows = await prisma.sale.findMany({
     where: { storeCode: store, date: { in: dates }, vendedor: { not: null }, ...(methods ? { method: { in: methods } } : {}) },
     select: { vendedor: true },
@@ -58,146 +67,147 @@ async function vendedoras(store: string | null, dates: string[], methods?: strin
   return rows.map((r) => nombreCorto(r.vendedor)).sort();
 }
 
-/** Detalle transacción a transacción del datáfono (misma lógica que /api/datafono-dia) */
-async function detalleDatafono(date: string, store: string): Promise<string[]> {
-  const [ventas, trans] = await Promise.all([
-    prisma.sale.findMany({
-      where: { date, storeCode: store, method: { in: ["TARJETA_CREDITO", "TARJETA_DEBITO"] } },
-      orderBy: [{ hora: "asc" }, { invoice: "asc" }, { id: "asc" }],
-    }),
-    prisma.dataphoneEntry.findMany({ where: { txDate: date, storeCode: store }, orderBy: { id: "asc" } }),
-  ]);
-  const posIn = ventas.map((v) => ({
-    id: v.id, invoice: v.source === "karrot_devolucion" ? "devolución" : v.invoice, hora: v.hora,
-    franquicia: v.franquicia, tipo: v.method === "TARJETA_CREDITO" ? "CR" : "DB", ultimos4: v.ultimos4,
-    autorizacion: v.autorizacion, amount: v.amount, esDevolucion: v.source === "karrot_devolucion", vendedor: v.vendedor,
-  }));
-  const txIn = trans.map((t) => ({
-    id: t.id, franchise: t.franchise, cardType: t.cardType, gross: t.gross, net: t.net,
-    depositDate: t.depositDate, autorizacion: t.autorizacion, ultimos4: t.ultimos4,
-  }));
-  const cruce = cruzarDatafono(posIn, txIn);
-  const par = new Map(cruce.pares.map((p) => [p.pos.id, p]));
+// ── detalle por canal ─────────────────────────────────────────────────────
+
+interface DiaDash {
+  date: string;
+  efe: { venta: number; deposito: number | null; depositoFecha: string | null; grupo: string[]; dif: number; estado: string; enPlazo?: boolean; nota?: string };
+  tar: { venta: number; plink: number; falta: number; sobra: number; sinCargar: boolean; cc: boolean };
+  qrVenta: number;
+  qrBanco: number;
+  qrDif: number;
+  qrSinCargar: boolean;
+}
+
+async function detalleEfectivo(store: string, d: DiaDash): Promise<string[]> {
+  const e = d.efe;
+  const dias = e.grupo.length ? e.grupo : [d.date];
   const out: string[] = [];
-  for (const p of posIn) {
-    const m = par.get(p.id);
+  if (e.estado === "PENDIENTE") out.push(`Vendido en efectivo ${cop(e.venta)} y <b>no se ha consignado</b> (ya se venció el plazo)`);
+  else if (e.deposito != null)
+    // dif = depósito − venta del grupo de días que cubre esa consignación
+    out.push(`Vendido en efectivo ${cop(e.deposito - e.dif)}${e.grupo.length > 1 ? ` (días ${e.grupo.map(dia).join(", ")})` : ""} · consignado ${cop(e.deposito)}${e.depositoFecha ? ` el ${dia(e.depositoFecha)}` : ""}`);
+  if (e.nota) out.push(esc(e.nota));
+  const v = await vendedoras(store, dias, ["EFECTIVO"]);
+  if (v.length) out.push(`Vendieron en efectivo: <b>${v.map(esc).join(", ")}</b>`);
+  return out;
+}
+
+async function detalleDatafono(store: string, date: string): Promise<string[]> {
+  const det = await api(datafonoDiaGET, `/api/datafono-dia?date=${date}&store=${store}`);
+  const out: string[] = [];
+  for (const p of det.pos as { invoice: string; hora: string | null; amount: number; vendedor: string | null; match: { gross: number; difValor: number } | null }[]) {
     const quien = `<b>${esc(nombreCorto(p.vendedor))}</b>`;
     const fac = `factura ${esc(p.invoice)}${p.hora ? ` (${p.hora})` : ""}`;
-    if (!m) out.push(`${quien} · ${fac} por ${cop(p.amount)} → <span style="color:#b91c1c">no está en el datáfono</span>`);
-    else if (Math.abs(m.difValor) > 50) {
-      const gross = m.tx.gross + (m.tx2?.gross ?? 0);
-      out.push(`${quien} · ${fac}: facturó ${cop(p.amount)} y el datáfono cobró ${cop(gross)} (<span style="color:#b91c1c">${m.difValor > 0 ? "+" : ""}${cop(m.difValor)}</span>)`);
-    }
+    if (!p.match) out.push(`${quien} · ${fac} por ${cop(p.amount)} → <span style="color:${ROJO}">no está en el datáfono</span>`);
+    else if (Math.abs(p.match.difValor) > 50)
+      out.push(`${quien} · ${fac}: facturó ${cop(p.amount)} y el datáfono cobró ${cop(p.match.gross)} (<span style="color:${ROJO}">${p.match.difValor > 0 ? "+" : ""}${cop(p.match.difValor)}</span>)`);
   }
-  if (cruce.txSueltas.length > 0) {
-    const turno = await vendedoras(store, [date]);
-    for (const t of cruce.txSueltas)
-      out.push(`Cobro en el datáfono de ${cop(t.gross)}${t.autorizacion ? ` (aut. ${esc(t.autorizacion)})` : ""} <span style="color:#b45309">sin factura en Karrot</span>${turno.length ? ` · ese día vendieron: ${turno.map(esc).join(", ")}` : ""}`);
+  const sueltas = det.sueltas as { gross: number; autorizacion: string | null }[];
+  if (sueltas.length) {
+    const turno = ((det.vendedorasDia ?? []) as string[]).map(nombreCorto);
+    for (const t of sueltas)
+      out.push(`Cobro en el datáfono de ${cop(t.gross)}${t.autorizacion ? ` (aut. ${esc(t.autorizacion)})` : ""} <span style="color:${AMBAR}">sin factura en Karrot</span>${turno.length ? ` · ese día vendieron: ${turno.map(esc).join(", ")}` : ""}`);
   }
   return out;
 }
 
-async function filaResultado(r: ConciliationResult): Promise<{ tienda: string; html: string; monto: number }> {
-  const tienda = r.storeCode ? r.storeName : "Empresa (QR)";
-  const fechas = r.salesDates.length ? r.salesDates : [r.depositDate];
-  const fechaTxt = fechas.map(dia).join(", ");
-  const monto = r.channel === "DATAFONO" ? (r.falta ?? 0) + (r.sobra ?? 0) || Math.abs(r.difference) : Math.abs(r.difference);
-  let difTxt: string;
-  if (r.channel === "DATAFONO" && (r.falta || r.sobra))
-    difTxt = [r.falta ? `falta ${cop(r.falta)}` : "", r.sobra ? `sobra ${cop(r.sobra)}` : ""].filter(Boolean).join(" · ");
-  else difTxt = r.difference < 0 ? `falta ${cop(-r.difference)}` : `sobra ${cop(r.difference)}`;
-
-  const detalle: string[] = [];
-  if (r.channel === "DATAFONO" && r.storeCode) detalle.push(...(await detalleDatafono(r.salesDates[0] ?? r.depositDate, r.storeCode)));
-  else if (r.channel === "EFECTIVO") {
-    if (r.status === "SIN_CONCILIAR" && r.salesAmount === 0)
-      detalle.push(`Consignación de ${cop(r.depositAmount)} el ${dia(r.depositDate)} que no corresponde a ventas en efectivo pendientes`);
-    else {
-      detalle.push(`Vendido en efectivo ${cop(r.salesAmount)} · consignado ${cop(r.depositAmount)} el ${dia(r.depositDate)}`);
-      const v = await vendedoras(r.storeCode, r.salesDates, ["EFECTIVO"]);
-      if (v.length) detalle.push(`Vendieron en efectivo: <b>${v.map(esc).join(", ")}</b>`);
-    }
-    if (r.qrAlert && r.note) detalle.push(esc(r.note));
-  } else {
-    detalle.push(`Ventas ${cop(r.salesAmount)} · banco ${cop(r.depositAmount)}`);
-    if (r.note) detalle.push(esc(r.note));
-  }
-  const html = `<tr>
-<td style="padding:6px 8px;border-bottom:1px solid #eee;white-space:nowrap;vertical-align:top">${fechaTxt}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top">${CANAL[r.channel] ?? r.channel}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #eee;white-space:nowrap;vertical-align:top;font-weight:600;color:${difTxt.startsWith("falta") ? "#b91c1c" : "#b45309"}">${difTxt}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top;font-size:13px">${detalle.join("<br>")}</td></tr>`;
-  return { tienda, html, monto };
+async function detalleQr(store: string, d: DiaDash): Promise<string[]> {
+  const det = await api(qrDiaGET, `/api/qr-dia?date=${d.date}&store=${store}`);
+  const out = [`Vendido por QR ${cop(d.qrVenta)} · llegó al banco ${cop(d.qrBanco)}`];
+  for (const f of det.facturas as { invoice: string; amount: number; vendedor: string | null; pago: unknown }[])
+    if (!f.pago) out.push(`<b>${esc(nombreCorto(f.vendedor))}</b> · factura ${esc(f.invoice)} por ${cop(f.amount)} → <span style="color:${ROJO}">el pago QR no aparece en el banco</span>`);
+  return out;
 }
 
+// ── armado ────────────────────────────────────────────────────────────────
+
+interface Fila { key: string; store: string; date: string; canal: string; dif: string; detalle: string[] }
+
 async function main() {
-  const l = await computeLedger();
-  const cerrados = new Set(l.months.filter((m) => m.closed).map((m) => m.month));
-  // solo lo reciente: lo anterior a 35 días ya se revisa por /meses, no por correo diario
-  const desde = new Date(Date.now() - 35 * 86400000).toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
-  const abiertas = l.summary.results.filter(
-    (r) =>
-      (r.status === "DIFERENCIA" || r.status === "SIN_CONCILIAR") &&
-      !cerrados.has(r.month ?? "") &&
-      (r.salesDates[r.salesDates.length - 1] ?? r.depositDate) >= desde &&
-      // huecos de archivo (fuente aún sin cargar ese día): no son diferencias
-      !/fuera del rango|no comparable|faltan ventas previas/i.test(r.note ?? ""),
-  );
+  const ledger = await computeLedger();
+  const abiertos = ledger.months.filter((m) => !m.closed).map((m) => m.month).sort();
+  // aceptadas a mano en el motor (datáfono por tienda/día, QR por día de empresa)
+  const manualTar = new Set(ledger.summary.results.filter((r) => r.channel === "DATAFONO" && r.status === "MANUAL").map((r) => `${r.storeCode}|${r.depositDate}`));
+  const manualQr = new Set(ledger.summary.results.filter((r) => r.channel === "QR" && r.status === "MANUAL").map((r) => r.depositDate));
+
+  const filas: Fila[] = [];
+  const qrSinTienda: { date: string; amount: number; payer: string; stores: string[] }[] = [];
+  const nombres = new Map<string, string>();
+
+  for (const month of abiertos) {
+    const dash = await api(dashboardGET, `/api/dashboard?month=${month}`);
+    for (const s of dash.stores as { code: string; name: string }[]) nombres.set(s.code, s.name);
+    for (const r of (dash.qrResumen?.revisar ?? []) as typeof qrSinTienda) qrSinTienda.push(r);
+    for (const [store, st] of Object.entries(dash.data as Record<string, { days: DiaDash[] }>)) {
+      for (const d of st.days) {
+        const e = d.efe;
+        // EFECTIVO: diferencia, sin conciliar o vendido y ya vencido sin consignar
+        if (e.estado === "DIFERENCIA" || e.estado === "SIN_CONCILIAR" || (e.estado === "PENDIENTE" && !e.enPlazo)) {
+          const n = -e.dif; // > 0 = falta
+          filas.push({ key: `${store}|${d.date}|EFE`, store, date: d.date, canal: "Efectivo", dif: n > 0 ? falta(n) : sobra(-n), detalle: await detalleEfectivo(store, d) });
+        }
+        // DATÁFONO: cruce exacto transacción a transacción (falta y sobra sin netear)
+        if (!d.tar.sinCargar && !d.tar.cc && (d.tar.falta > 0 || d.tar.sobra > 0) && !manualTar.has(`${store}|${d.date}`)) {
+          const dif = [d.tar.falta > 0 ? falta(d.tar.falta) : "", d.tar.sobra > 0 ? sobra(d.tar.sobra) : ""].filter(Boolean).join(" · ");
+          filas.push({ key: `${store}|${d.date}|TAR`, store, date: d.date, canal: "Datáfono", dif, detalle: await detalleDatafono(store, d.date) });
+        }
+        // QR por tienda (pagos del banco asignados a la tienda por valor)
+        if (!d.qrSinCargar && Math.abs(d.qrDif) >= 1 && !manualQr.has(d.date)) {
+          filas.push({ key: `${store}|${d.date}|QR`, store, date: d.date, canal: "QR", dif: d.qrDif > 0 ? falta(d.qrDif) : sobra(-d.qrDif), detalle: await detalleQr(store, d) });
+        }
+      }
+    }
+  }
+
   const reportadas = leerEstado();
-  const nuevas = abiertas.filter((r) => !reportadas.has(r.id));
-  const viejas = abiertas.filter((r) => reportadas.has(r.id));
+  const nuevas = filas.filter((f) => !reportadas.has(f.key)).length;
+  const primerCorreo = reportadas.size === 0;
 
-  // nuevas, agrupadas por tienda
-  const porTienda = new Map<string, { html: string; monto: number }[]>();
-  for (const r of nuevas.sort((a, b) => (a.salesDates[0] ?? a.depositDate).localeCompare(b.salesDates[0] ?? b.depositDate))) {
-    const f = await filaResultado(r);
-    porTienda.set(f.tienda, [...(porTienda.get(f.tienda) ?? []), f]);
-  }
   const th = (t: string) => `<th style="text-align:left;padding:6px 8px;background:#f3f4f6;font-size:12px;color:#555">${t}</th>`;
+  const td = (t: string, extra = "") => `<td style="padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top;${extra}">${t}</td>`;
   let cuerpo = "";
-  if (nuevas.length === 0) cuerpo += `<p style="color:#15803d"><b>✓ No hay diferencias nuevas</b> desde el último correo.</p>`;
-  else
-    for (const [tienda, filas] of [...porTienda.entries()].sort()) {
-      cuerpo += `<h3 style="margin:18px 0 6px;font-size:15px;color:#1f2937">${esc(tienda)} <span style="font-weight:normal;color:#6b7280;font-size:13px">(${filas.length})</span></h3>
-<table style="border-collapse:collapse;width:100%;font-size:14px">${"<tr>" + th("Día") + th("Canal") + th("Diferencia") + th("Detalle / quién") + "</tr>"}${filas.map((f) => f.html).join("")}</table>`;
+  const porTienda = new Map<string, Fila[]>();
+  for (const f of filas) porTienda.set(f.store, [...(porTienda.get(f.store) ?? []), f]);
+  if (filas.length === 0) cuerpo += `<p style="color:#15803d"><b>✓ Todo está conciliado.</b> No hay diferencias pendientes.</p>`;
+  for (const [store, fs_] of [...porTienda.entries()].sort((a, b) => (nombres.get(a[0]) ?? a[0]).localeCompare(nombres.get(b[0]) ?? b[0]))) {
+    fs_.sort((a, b) => a.date.localeCompare(b.date) || a.canal.localeCompare(b.canal));
+    cuerpo += `<h3 style="margin:22px 0 6px;font-size:15px;color:#1f2937">${esc(nombres.get(store) ?? store)} <span style="font-weight:normal;color:#6b7280;font-size:13px">(${fs_.length} pendiente${fs_.length > 1 ? "s" : ""})</span></h3>
+<table style="border-collapse:collapse;width:100%;font-size:14px"><tr>${th("Día")}${th("Canal")}${th("Diferencia")}${th("Detalle / quién")}</tr>`;
+    let mesActual = "";
+    for (const f of fs_) {
+      const mes = f.date.slice(0, 7);
+      if (mes !== mesActual) {
+        mesActual = mes;
+        cuerpo += `<tr><td colspan="4" style="padding:8px 8px 2px;font-size:12px;font-weight:bold;color:#3BA55D;text-transform:uppercase">${MESES_LARGO[Number(mes.slice(5)) - 1]}</td></tr>`;
+      }
+      const nueva = !primerCorreo && !reportadas.has(f.key) ? ` <span style="background:#fee2e2;color:${ROJO};font-size:10px;font-weight:bold;padding:1px 5px;border-radius:8px">NUEVA</span>` : "";
+      cuerpo += `<tr>${td(dia(f.date) + nueva, "white-space:nowrap")}${td(f.canal)}${td(f.dif, "white-space:nowrap")}${td(f.detalle.join("<br>"), "font-size:13px")}</tr>`;
     }
-
-  // efectivo vendido y aún sin consignar (solo tiendas físicas)
-  const pend = l.summary.pendings.filter((p) => p.storeCode && p.storeCode !== "PRIN" && p.total > 0);
-  if (pend.length) {
-    cuerpo += `<h3 style="margin:22px 0 6px;font-size:15px;color:#1f2937">Efectivo vendido pendiente por consignar</h3><ul style="margin:0;padding-left:18px;font-size:14px">`;
-    for (const p of pend) cuerpo += `<li><b>${esc(p.storeName)}</b>: ${cop(p.total)} — ${p.days.map((d) => `${dia(d.date)} ${cop(d.amount)}`).join(", ")}</li>`;
+    cuerpo += `</table>`;
+  }
+  if (qrSinTienda.length) {
+    cuerpo += `<h3 style="margin:22px 0 6px;font-size:15px;color:#1f2937">Pagos QR que no se pudieron asignar a una tienda</h3>
+<p style="margin:0 0 4px;font-size:13px;color:#6b7280">El banco no dice de qué tienda es cada QR; estos calzan con ventas de varias tiendas. Se asignan en /tiendas → QR (“¿de qué tienda es?”).</p><ul style="margin:0;padding-left:18px;font-size:14px">`;
+    for (const r of qrSinTienda) cuerpo += `<li>${dia(r.date)} · ${cop(r.amount)} · ${esc(r.payer)} → ${r.stores.map(esc).join(" o ")}</li>`;
     cuerpo += `</ul>`;
   }
 
-  // lo que sigue abierto de correos anteriores
-  if (viejas.length) {
-    const res = new Map<string, { n: number; monto: number }>();
-    for (const r of viejas) {
-      const t = r.storeCode ? r.storeName : "Empresa (QR)";
-      const x = res.get(t) ?? { n: 0, monto: 0 };
-      x.n++;
-      x.monto += Math.abs(r.channel === "DATAFONO" && (r.falta || r.sobra) ? (r.falta ?? 0) + (r.sobra ?? 0) : r.difference);
-      res.set(t, x);
-    }
-    cuerpo += `<h3 style="margin:22px 0 6px;font-size:15px;color:#1f2937">Siguen sin resolver (de correos anteriores)</h3><ul style="margin:0;padding-left:18px;font-size:14px">`;
-    for (const [t, x] of [...res.entries()].sort()) cuerpo += `<li>${esc(t)}: ${x.n} diferencia${x.n > 1 ? "s" : ""} por ${cop(x.monto)}</li>`;
-    cuerpo += `</ul>`;
-  }
-
-  const cut = l.cut;
+  const cut = ledger.cut;
   const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:760px;color:#111">
+  const resumen = filas.length
+    ? `<p style="margin:0 0 8px"><b>${filas.length} diferencia${filas.length > 1 ? "s" : ""} sin resolver</b>${!primerCorreo && nuevas ? ` (<b style="color:${ROJO}">${nuevas} nueva${nuevas > 1 ? "s" : ""}</b> desde el correo anterior)` : ""}, de los meses abiertos (${abiertos.map((m) => MESES_LARGO[Number(m.slice(5)) - 1]).join(", ")}).</p>`
+    : "";
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:780px;color:#111">
 <h2 style="margin:0 0 4px;color:#3BA55D">Conciliación de tiendas — ${dia(hoy)}</h2>
-<p style="margin:0 0 12px;color:#6b7280;font-size:13px">Datos cargados: ventas Karrot hasta ${cut.sales ? dia(cut.sales) : "—"} · bancos hasta ${cut.bank ? dia(cut.bank) : "—"} · datáfono (Credibanco) hasta ${cut.datafono ? dia(cut.datafono) : "—"}. El datáfono llega con un día hábil de rezago.</p>
-${nuevas.length ? `<p style="margin:0 0 8px"><b>${nuevas.length} diferencia${nuevas.length > 1 ? "s" : ""} nueva${nuevas.length > 1 ? "s" : ""}</b> para revisar con las vendedoras:</p>` : ""}
-${cuerpo}
+<p style="margin:0 0 12px;color:#6b7280;font-size:13px">Datos cargados: ventas Karrot hasta ${cut.sales ? dia(cut.sales) : "—"} · bancos hasta ${cut.bank ? dia(cut.bank) : "—"} · QR hasta ${cut.qr ? dia(cut.qr) : "—"} · datáfono (Credibanco) hasta ${cut.datafono ? dia(cut.datafono) : "—"}. Una diferencia sale de este correo cuando el día cuadra o se acepta en el conciliador.</p>
+${resumen}${cuerpo}
 <p style="margin:22px 0 0;font-size:13px"><a href="${APP}/tiendas" style="color:#3BA55D">Ver el detalle en el conciliador →</a> (clic en la cifra del día para ver factura por factura)</p>
 <p style="margin:8px 0 0;font-size:12px;color:#9ca3af">Correo automático del Conciliador Plazet, todos los días a las 9 am.</p></div>`;
 
   if (HTML_OUT) {
     fs.writeFileSync(HTML_OUT, html);
-    console.log(`HTML en ${HTML_OUT} · nuevas ${nuevas.length} · siguen ${viejas.length}`);
+    console.log(`HTML en ${HTML_OUT} · pendientes ${filas.length} · nuevas ${nuevas} · QR sin tienda ${qrSinTienda.length}`);
     process.exit(0);
   }
 
@@ -209,15 +219,15 @@ ${cuerpo}
     secure: Number(process.env.SMTP_PORT) === 465,
     auth: { user, pass: process.env.SMTP_PASS },
   });
-  const asunto = nuevas.length
-    ? `Conciliación tiendas ${dia(hoy)}: ${nuevas.length} diferencia${nuevas.length > 1 ? "s" : ""} nueva${nuevas.length > 1 ? "s" : ""}`
-    : `Conciliación tiendas ${dia(hoy)}: sin diferencias nuevas`;
+  const asunto = filas.length
+    ? `Conciliación tiendas ${dia(hoy)}: ${filas.length} diferencia${filas.length > 1 ? "s" : ""} sin resolver${!primerCorreo && nuevas ? ` (${nuevas} nueva${nuevas > 1 ? "s" : ""})` : ""}`
+    : `Conciliación tiendas ${dia(hoy)}: todo conciliado`;
   await transporter.sendMail({ from: `Conciliador Plazet <${user}>`, to: para, subject: (PRUEBA ? "[PRUEBA] " : "") + asunto, html });
   console.log(`CORREO enviado a ${para}: ${asunto}`);
 
   if (!PRUEBA) {
     fs.mkdirSync(path.dirname(ESTADO), { recursive: true });
-    fs.writeFileSync(ESTADO, JSON.stringify([...new Set([...reportadas, ...abiertas.map((r) => r.id)])], null, 0));
+    fs.writeFileSync(ESTADO, JSON.stringify(filas.map((f) => f.key)));
   }
   process.exit(0);
 }
