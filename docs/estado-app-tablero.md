@@ -27,8 +27,11 @@ Regla de Paola: todos los días se tienen en cuenta las NC, cada una con su mét
 - Asignación NC↔cierre: primero las que calzan EXACTO (NC ordenadas por número), NC sin tienda se ubica por el
   único cierre del día que devolvió ese valor exacto. Si la factura anulada no está en las ventas (Karrot no trae
   las anuladas: NC 2, 7, 19, 27, 28, 30, 33, 34 de jul–ago) NO se crea devolución (no hay nada que cancelar).
-  NC de traslados NL de julio ($10–12 M) se ignoran. Backfill jul–sep hecho 22-sep. Sin devolución en el cierre
-  (¿anuladas sin devolver plata? revisar con Jero): NC 3, 4, 18, 20, 24, 29, 36, 38, 39, 40, 41, 43, 45, 46, 64.
+  NC de traslados NL de julio ($10–12 M) se ignoran. Backfill jul–sep hecho 22-sep.
+  **Regla de Paola (23-sep): NC sin salida de plata en el cierre = CAMBIO (se hizo la NC y luego se facturó otra
+  cosa) → no se descuenta** (`metodoDevolucion = "Cambio (sin devolución)"`). Probado: anularlas era un error —
+  fac 4680 $249.000 SÍ pasó por el datáfono y se re-facturó como 4704. Son 15 (NC 3, 4, 18, 20, 24, 29, 36, 38,
+  39, 40, 41, 43, 45, 46, 64).
 - Scripts: `scripts/nc-estado.ts` (NC + métodos + devoluciones de sept), `scripts/nc-datafono-check.ts`.
 
 ## 15-sep-2026 — EXTRACTOS BANCARIOS ENTRAN SOLOS (robot local, ya no se suben por /cargar)

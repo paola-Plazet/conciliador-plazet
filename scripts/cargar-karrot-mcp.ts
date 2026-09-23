@@ -92,7 +92,15 @@ async function main() {
       }
       const metodoDevolucion = partes.map((x) => x.c.method).join(" + ") || null;
       await prisma.creditNote.update({ where: { id: n.id }, data: { metodoOriginal, metodoDevolucion, storeCode: n.storeCode, location: n.location } });
-      if (!partes.length) { console.log(`   ⚠ NC ${n.ncNumber} ${n.date} ${n.storeCode} fac ${n.orderReceipt} ${fmt(n.net)} (pagada con ${metodoOriginal ?? "?"}): el cierre de caja no muestra devolución — ¿se anuló sin devolver plata?`); continue; }
+      if (!partes.length) {
+        // Regla de Paola: si el cierre no muestra salida de plata, se hizo la NC y luego se facturó otra
+        // cosa (cambio). La plata de la venta original sí entró (ej. fac 4680 $249.000 SÍ pasó por el
+        // datáfono y se re-facturó como 4704), así que no se descuenta nada.
+        const totalOrig = orig.reduce((t, v) => t + v.amount, 0);
+        await prisma.creditNote.update({ where: { id: n.id }, data: { metodoDevolucion: "Cambio (sin devolución)" } });
+        console.log(`   NC ${n.ncNumber} ${n.date} ${n.storeCode} fac ${n.orderReceipt} (${orig[0]?.date ?? "?"}) ${fmt(n.net)} de ${fmt(totalOrig)} · pagada con ${metodoOriginal ?? "?"} → cambio (NC y se facturó otra cosa), sin salida de plata: no se descuenta`);
+        continue;
+      }
       const tarjeta = orig.find((v) => v.method.startsWith("TARJETA"));
       if (!orig.length) {
         // la factura anulada no está entre las ventas cargadas (Karrot no trae las anuladas): no hay nada
