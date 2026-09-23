@@ -6,7 +6,7 @@
 //    (Returns) y saldo del sistema vs contado por la asesora.
 
 import { parse } from "csv-parse/sync";
-import { normalize } from "../stores";
+import { normalize, storeFromBodega } from "../stores";
 
 const UBICACION_TIENDA = new Map<string, string>([
   ["PLAZA DE LAS AMERICAS", "B1"],
@@ -17,7 +17,7 @@ const UBICACION_TIENDA = new Map<string, string>([
 ]);
 
 export function tiendaDeUbicacion(location: string): string | null {
-  return UBICACION_TIENDA.get(normalize(location)) ?? null;
+  return UBICACION_TIENDA.get(normalize(location)) ?? storeFromBodega(location); // Floresta B5/B6 por su bodega
 }
 
 const num = (v: unknown) => {

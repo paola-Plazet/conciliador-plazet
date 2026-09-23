@@ -209,6 +209,8 @@ model CreditNote {
   discount     Float
   net          Float // gross - discount = lo que se devuelve
   customer     String
+  metodoOriginal   String? // cómo se pagó la venta original (métodos del POS, ej. TARJETA_CREDITO)
+  metodoDevolucion String? // por dónde salió la plata según el cierre de caja (Efectivo, Datafono, Transferencia…)
 
   @@index([date])
 }

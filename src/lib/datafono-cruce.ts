@@ -79,7 +79,11 @@ function emparejar<P extends PosPago, T extends TxDatafono>(pos: P[], tx: T[]): 
     const a = auth(p.autorizacion);
     if (!a) continue;
     const t = libres().find((x) => auth(x.autorizacion) === a);
-    if (t) asignar(p, t, "autorizacion");
+    if (!t) continue;
+    // misma autorización pero otro valor: ¿se cobró en dos transacciones? (fac 9349 = 56.300 + 7.900)
+    const t2 = esIgual(r(t.gross) - r(p.amount)) ? undefined : libres().find((x) => x !== t && esIgual(r(t.gross) + r(x.gross) - r(p.amount)));
+    if (t2) asignar(p, t, "suma", { tx2: t2 });
+    else asignar(p, t, "autorizacion");
   }
   // pase 1b: misma tarjeta (últimos 4) y autorización prefijo (digitada incompleta en el POS)
   for (const p of pos) {
@@ -142,8 +146,27 @@ function emparejar<P extends PosPago, T extends TxDatafono>(pos: P[], tx: T[]): 
 }
 
 export function cruzarDatafono<P extends PosPago, T extends TxDatafono>(pos: P[], tx: T[]): CruceDatafono<P, T> {
+  // Anulación por NC: la devolución (que trae la autorización y tarjeta de la venta original) y la
+  // factura anulada salen del cruce ANTES de emparejar, si el datáfono no tiene reversión por ese
+  // valor. Si no, la factura nueva —que suele copiar la autorización— se emparejaría con la anulada.
+  const anuladas = new Set<P>();
+  for (const d of pos.filter((p) => p.amount < 0 && auth(p.autorizacion))) {
+    if (tx.some((t) => t.gross < 0 && esIgual(r(t.gross) - r(d.amount)))) continue;
+    const o = pos.find((p) => p.amount > 0 && !anuladas.has(p) && esIgual(r(p.amount) - r(d.amount))
+      && auth(p.autorizacion) === auth(d.autorizacion) && (p.ultimos4 ?? "") === (d.ultimos4 ?? ""));
+    if (o) { anuladas.add(o); anuladas.add(d); }
+  }
+  pos = pos.filter((p) => !anuladas.has(p));
   const cobros = emparejar(pos.filter((p) => p.amount >= 0), tx.filter((t) => t.gross >= 0));
   const devol = emparejar(pos.filter((p) => p.amount < 0), tx.filter((t) => t.gross < 0));
+  // Anulación: factura con tarjeta que nunca pasó por el datáfono y se anuló con una NC del
+  // mismo valor (se re-facturó por otro valor con el mismo cobro). Se cancelan entre sí.
+  for (const d of [...devol.posSueltos]) {
+    const i = cobros.posSueltos.findIndex((p) => esIgual(r(p.amount) - r(d.amount)));
+    if (i < 0) continue;
+    cobros.posSueltos.splice(i, 1);
+    devol.posSueltos.splice(devol.posSueltos.indexOf(d), 1);
+  }
   let falta = 0, sobra = 0;
   const distinto = (par: ParCruce<P, T>) => !esIgual(par.difValor);
   const montoTx = (par: ParCruce<P, T>) => r(par.tx.gross) + (par.tx2 ? r(par.tx2.gross) : 0);

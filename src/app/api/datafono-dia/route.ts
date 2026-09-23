@@ -30,7 +30,9 @@ export async function GET(req: NextRequest) {
 
   const posIn = ventas.map((v) => ({
     id: v.id,
-    invoice: v.source === "karrot_devolucion" ? "devolución" : v.invoice,
+    invoice: v.source === "karrot_devolucion"
+      ? (v.invoice.startsWith("NC") ? `${v.invoice.replace("NC", "NC ")} (fac ${v.bodega.match(/fac (\S+)/)?.[1] ?? "?"})` : "devolución")
+      : v.invoice,
     hora: v.hora,
     franquicia: v.franquicia,
     tipo: v.method === "TARJETA_CREDITO" ? "CR" : "DB",

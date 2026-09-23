@@ -3,6 +3,43 @@
 Última sesión: 11-sep-2026. Retomar con:
 **"retomemos el conciliador, lee docs/estado-app-tablero.md"**
 
+## 22-sep-2026 — NOTAS CRÉDITO TODOS LOS DÍAS (con método original y método de devolución)
+
+Regla de Paola: todos los días se tienen en cuenta las NC, cada una con su método de pago y de devolución.
+- **Tarea "Conciliador correo 9am"** (`robot-bancos/diario_9am.py`, `cargar_devoluciones`): después de las
+  ventas baja por `claude -p` los reportes `CUSTOMER_CREDIT_NOTES` + `CASHIER_BALANCE` de los últimos 3 días
+  (rango 00:00Z–23:59Z porque la "Z" es hora Colombia) y corre `scripts/cargar-karrot-mcp.ts`. El CSV de NC
+  es chico y el conector lo devuelve en línea (no queda en tool-results) → se toma de la respuesta de Claude.
+  Backfill: `python diario_9am.py --devoluciones 2026-07-08 2026-08-31` (de a 7 días).
+- **`CreditNote.metodoOriginal`** (métodos de la venta original en el POS; web = "Mercadopago") y
+  **`metodoDevolucion`** (método del cierre de caja por donde salió la plata; puede ser partido, ej. NC 49
+  = Datafono $56.000 + Efectivo $100). `db push` hecho.
+- **Devoluciones sintéticas = UNA por NC** (`invoice NC<n>`, o `NC<n>-DAT/-EFE` si se partió), en el método de
+  devolución, con autorización/tarjeta de la venta original. Lo que el cierre devolvió sin NC queda
+  `DEV-<batch>`. NC de ventas web (PRINCIPAL · Mercadopago) no tocan tiendas. `tiendaDeUbicacion` ahora
+  reconoce Floresta B5/B6 por la bodega. ⚠ si la NC no tiene devolución en el cierre (NC 64 B6 21-sep).
+- **Cruce datáfono** (`datafono-cruce.ts`): (1) la factura anulada y su NC (misma autorización/tarjeta/valor,
+  sin reversión en el datáfono) salen ANTES de emparejar — la factura nueva suele copiar la autorización de
+  la anulada (B3 8-sep: fac 8787 $80.000 anulada por NC 53, re-facturada 8846 $65.550 con aut 536800);
+  (2) misma autorización pero otro valor → se busca una 2ª transacción que sume (fac 9349 = 56.300 + 7.900);
+  (3) al final, devolución suelta del POS = venta suelta del mismo valor → se cancelan. Regresión abr–sep:
+  13 de 603 días mejoran a 0, ninguno empeora. Modal: la devolución se ve como "NC 53 (fac 8787)".
+- Scripts: `scripts/nc-estado.ts` (NC + métodos + devoluciones de sept), `scripts/nc-datafono-check.ts`.
+
+## 15-sep-2026 — EXTRACTOS BANCARIOS ENTRAN SOLOS (robot local, ya no se suben por /cargar)
+
+Tarea de Windows **"Robot Bancos Claude"** (cada hora 8am–9pm, en el PC de Paola; código FUERA de este
+repo: `C:\Users\Paola Agreda\robot-bancos\robot_bancos.py`). Cuando Paola baja a **Descargas** el Alianza
+`movimientos_10030039979*.xls`, el Bancolombia `CSV_19100003911_*.zip/csv` o el Credibanco
+`901987494_Reporte_Conciliar_*.csv/xlsx`, el robot: (1) los agrega sin duplicar a `movimientos bancos.xlsx`
+(OneDrive) y (2) los carga a ESTA app corriendo `scripts/cargar-archivo.ts` con esos archivos
+(misma detección + `ingestFiles` replace-range que /cargar; escribe en Neon por el DATABASE_URL del .env
+local). Si falla, reintenta en la siguiente hora. Registro: `registro robot bancos.txt` en la carpeta
+MOVIMIENTOS BANCOS. OJO: el robot usa el código LOCAL de este repo → un cambio sin probar en parsers/ledger
+afecta la carga automática. `detect.ts` ya reconoce el Reporte Conciliar en **CSV** (lo lee SheetJS; probado
+15-sep: 721 filas). Primera carga 15-sep 11:20: banco QR/datáfono 106 filas 1→14-sep, Alianza 73 filas
+1→15-sep, Credibanco 721 filas 31-ago→10-sep.
+
 ## 11-sep-2026 — datáfono: diferencia NETA en la tabla + tasa Credibanco verificada
 
 **Tabla /tiendas (FilaDia):** la columna de diferencia del datáfono ya no muestra "falta X / sobra Y"
