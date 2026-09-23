@@ -11,6 +11,11 @@ const REFS: [string, string][] = [
   ["2002", "B2"], // Unioccidente
   ["3003", "B3"], // Unicentro Norte
   ["4004", "JP"], // Jardín Plaza
+  // Opción 2 (10 dígitos, por si el banco pide más): 901987 (inicio del NIT) + código de la tienda
+  ["9019871001", "B1"],
+  ["9019872002", "B2"],
+  ["9019873003", "B3"],
+  ["9019874004", "JP"],
   // Celulares usados antes (se conservan para el histórico)
   ["3235896844", "B3"], // Unicentro
   ["3138845101", "B3"], // Unicentro
