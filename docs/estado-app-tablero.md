@@ -3,6 +3,17 @@
 Última sesión: 11-sep-2026. Retomar con:
 **"retomemos el conciliador, lee docs/estado-app-tablero.md"**
 
+## 23-sep-2026 — REFERENCIAS FIJAS DE CONSIGNACIÓN POR TIENDA
+Paola pidió una referencia por tienda para que no se pierdan consignaciones (las vendedoras usaban su celular;
+ej. 3209052268 —mapeada a B3 desde abril— trajo el 21 y 22-sep $1.065.100 y $1.017.050 que calzan con lo que
+Plaza retiró de caja). Nuevas en CashReference (`scripts/seed-references.ts`): **1001 = B1, 2002 = B2,
+3003 = B3, 4004 = JP** (un error de un dígito no cae en otra tienda). Floresta B5/B6 no consigna (recaudo del
+centro comercial). Los celulares viejos se conservan para el histórico. Pendiente: que Paola confirme de quién
+es 3209052268 y que Alianza acepte referencias de 4 dígitos.
+Karrot 23-sep: la tarea 9am falló (conector CONNECT_TIMEOUT); ventas 20–22 y NC 64–67 cargadas a mano desde la
+sesión. `diario_9am.py` ahora usa MCP_TIMEOUT=90000 y 3 intentos. NC: el cierre puede ser la mañana siguiente
+(B6 caja del 21 cerrada el 22 08:15) → `delDia` acepta n.date o el día siguiente.
+
 ## 22-sep-2026 — NOTAS CRÉDITO TODOS LOS DÍAS (con método original y método de devolución)
 
 Regla de Paola: todos los días se tienen en cuenta las NC, cada una con su método de pago y de devolución.

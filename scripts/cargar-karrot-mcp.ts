@@ -52,8 +52,11 @@ async function main() {
   if (fechasCierre.size) {
     const fechas = [...fechasCierre].sort();
     await prisma.sale.deleteMany({ where: { source: SOURCE_DEVOLUCION, date: { in: fechas } } });
-    const cierres = await prisma.cashierClose.findMany({ where: { date: { in: fechas }, returns: { not: 0 }, storeCode: { not: null } } });
-    const exacta = (n: { net: number; date: string }, c: (typeof cierres)[number]) => c.date === n.date && Math.abs(-c.returns - n.net) <= 50;
+    const cierres = await prisma.cashierClose.findMany({ where: { date: { in: [...fechas, ...fechas.map((d) => new Date(Date.parse(d + "T12:00:00Z") + 864e5).toISOString().slice(0, 10))] }, returns: { not: 0 }, storeCode: { not: null } } });
+    // la caja de un día a veces se cierra la mañana siguiente (B6: caja del 21-sep cerrada el 22-sep 08:15)
+    const sig = (d: string) => new Date(Date.parse(d + "T12:00:00Z") + 864e5).toISOString().slice(0, 10);
+    const delDia = (n: { date: string }, c: (typeof cierres)[number]) => c.date === n.date || c.date === sig(n.date);
+    const exacta = (n: { net: number; date: string }, c: (typeof cierres)[number]) => delDia(n, c) && Math.abs(-c.returns - n.net) <= 50;
     const notas = (await prisma.creditNote.findMany({ where: { date: { in: fechas } } }))
       // sin tienda (la venta original no está cargada): si UN solo cierre del día devolvió exacto ese valor, es de esa tienda
       .map((n) => {
@@ -79,7 +82,7 @@ async function main() {
       // cierres de la misma tienda y día con devoluciones por explicar; primero el del mismo método de la venta
       const mismoMetodo = (x: (typeof cierres)[number]) => orig.some((v) => metodoCierre(x.method) === metodoCierre(v.method) || (metodoCierre(x.method) === "TARJETA_DEBITO" && v.method.startsWith("TARJETA")));
       const libres = cierres
-        .filter((c) => c.storeCode === n.storeCode && c.date === n.date && c.returns < 0)
+        .filter((c) => c.storeCode === n.storeCode && delDia(n, c) && c.returns < 0)
         .sort((x, y) => Number(mismoMetodo(y)) - Number(mismoMetodo(x)) || x.returns - y.returns);
       const una = libres.find((c) => exacta(n, c) && mismoMetodo(c)) ?? libres.find((c) => exacta(n, c))
         ?? libres.find((c) => -c.returns >= n.net - 50 && mismoMetodo(c)) ?? libres.find((c) => -c.returns >= n.net - 50);
