@@ -17,12 +17,15 @@ export async function GET(req: NextRequest) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !store) {
     return NextResponse.json({ error: "Parámetros date (YYYY-MM-DD) y store requeridos." }, { status: 400 });
   }
-  const [ventas, trans] = await Promise.all([
+  const [ventas, trans, turno] = await Promise.all([
     prisma.sale.findMany({
       where: { date, storeCode: store, method: { in: ["TARJETA_CREDITO", "TARJETA_DEBITO"] } },
       orderBy: [{ hora: "asc" }, { invoice: "asc" }, { id: "asc" }],
     }),
     prisma.dataphoneEntry.findMany({ where: { txDate: date, storeCode: store }, orderBy: { id: "asc" } }),
+    // quienes vendieron en la tienda ese día (cualquier método): para las
+    // transacciones del datáfono sin factura, que no tienen vendedora propia
+    prisma.sale.findMany({ where: { date, storeCode: store, vendedor: { not: null } }, select: { vendedor: true }, distinct: ["vendedor"] }),
   ]);
 
   const posIn = ventas.map((v) => ({
@@ -35,6 +38,7 @@ export async function GET(req: NextRequest) {
     autorizacion: v.autorizacion,
     amount: v.amount,
     esDevolucion: v.source === "karrot_devolucion",
+    vendedor: v.vendedor,
   }));
   const txIn = trans.map((t) => ({
     id: t.id,
@@ -85,5 +89,7 @@ export async function GET(req: NextRequest) {
     totales: { pos: totalPos, datafono: totalDat, dif: totalDat - totalPos },
     /** el POS de esa fecha trae códigos de autorización (formato Karrot nuevo) */
     tieneAutorizacion: posIn.some((p) => p.autorizacion),
+    /** vendedoras con ventas en la tienda ese día */
+    vendedorasDia: turno.map((t) => t.vendedor as string).sort(),
   });
 }

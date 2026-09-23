@@ -95,6 +95,8 @@ export function parseKarrotPagos(buffer: Buffer): AlegraParseResult {
   const cAuth = findCol(idx, "CODIGOAUTORIZACION", "CÓDIGO AUTORIZACIÓN", "CODIGO AUTORIZACION");
   const cAuth2 = findCol(idx, "APPROVALCODE");
   const c4 = findCol(idx, "CUATROSDIGITOS", "CUATRO DIGITOS", "ULTIMOS 4");
+  const cVend = findCol(idx, "SELLER NAME", "NOMBRE VENDEDOR", "VENDEDOR");
+  const cUser = findCol(idx, "USER NAME", "NOMBRE USUARIO", "USUARIO");
   if (cFac < 0 || cFecha < 0 || cMet < 0 || cVal < 0) {
     return { sales: [], totalInvoices: 0, totalAmount: 0, byMethod: {}, warnings: ["Karrot (pagos): faltan columnas (# Factura / Fecha / Nombre-Valor Método de Pago)."] };
   }
@@ -141,6 +143,7 @@ export function parseKarrotPagos(buffer: Buffer): AlegraParseResult {
       franquicia: esTarjeta ? col(cFranq).toUpperCase() || null : null,
       autorizacion,
       ultimos4: esTarjeta ? col(c4).replace(/\D/g, "").slice(-4) || null : null,
+      vendedor: col(cVend).replace(/\s+/g, " ") || col(cUser) || null,
     };
     v.amount += parseNumber(row[cVal]);
     ventas.set(key, v);

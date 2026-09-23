@@ -24,6 +24,7 @@ export interface SaleInvoice {
   franquicia?: string | null;
   autorizacion?: string | null;
   ultimos4?: string | null;
+  vendedor?: string | null; // quien hizo la venta (solo Karrot)
 }
 
 /** Un movimiento del extracto de la cuenta de EFECTIVO */

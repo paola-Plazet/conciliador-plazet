@@ -893,13 +893,14 @@ function QrDetalleModal({ date, store, storeLabel, puedeGestionar, onCambio, onC
 function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: string; store: string; storeLabel: string; onClose: () => void }) {
   interface Match { via: "autorizacion" | "valor+tarjeta" | "valor" | "suma" | "aprox"; gross: number; net: number; franchise: string; cardType: string; ultimos4: string | null; autorizacion: string | null; difValor: number; tx2Gross: number | null; compartida: boolean }
   interface Det {
-    pos: { id: number; invoice: string; hora: string | null; franquicia: string | null; tipo: string; ultimos4: string | null; autorizacion: string | null; amount: number; match: Match | null }[];
+    pos: { id: number; invoice: string; hora: string | null; franquicia: string | null; tipo: string; ultimos4: string | null; autorizacion: string | null; amount: number; match: Match | null; vendedor: string | null }[];
     sueltas: { id: number; franchise: string; cardType: string; gross: number; net: number; depositDate: string; autorizacion: string | null; ultimos4: string | null }[];
     devueltoDatafono: number;
     falta: number;
     sobra: number;
     totales: { pos: number; datafono: number; dif: number };
     tieneAutorizacion: boolean;
+    vendedorasDia: string[];
   }
   const [det, setDet] = useState<Det | null>(null);
   useEffect(() => {
@@ -908,6 +909,12 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
   }, [date, store]);
   const tarjeta = (f: string | null, t: string | null, u4: string | null) =>
     [f || "", t ? (t.startsWith("CR") ? "crédito" : t.startsWith("DB") || t.startsWith("DEB") ? "débito" : t.toLowerCase()) : "", u4 ? `····${u4}` : ""].filter(Boolean).join(" ");
+  // "NATALIA PATRICIA CERRA CANTERO" → "Natalia Cerra"
+  const nombreCorto = (n: string | null) => {
+    if (!n) return "—";
+    const w = n.trim().toLowerCase().split(/s+/).map((x) => x.charAt(0).toUpperCase() + x.slice(1));
+    return w.length >= 4 ? `${w[0]} ${w[2]}` : w.length === 3 ? `${w[0]} ${w[1]}` : w.join(" ");
+  };
   const sinCuadrar = det ? det.pos.filter((p) => !p.match || p.match.difValor !== 0).length + det.sueltas.length : 0;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -946,6 +953,7 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
               <thead>
                 <tr className="border-b border-gray-200 text-left text-[11px] uppercase tracking-wide text-gray-500">
                   <th className="py-2 pr-2">Factura</th>
+                  <th className="py-2 pr-2">Vendedora</th>
                   <th className="py-2 pr-2">Hora</th>
                   <th className="py-2 pr-2">Tarjeta (POS)</th>
                   <th className="py-2 pr-2">Aut.</th>
@@ -954,13 +962,14 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
                 </tr>
               </thead>
               <tbody>
-                {det.pos.length === 0 && <tr><td colSpan={6} className="py-3 text-gray-400">No hubo pagos con tarjeta en el POS ese día.</td></tr>}
+                {det.pos.length === 0 && <tr><td colSpan={7} className="py-3 text-gray-400">No hubo pagos con tarjeta en el POS ese día.</td></tr>}
                 {det.pos.map((p) => {
                   const m = p.match;
                   const mal = !m || Math.abs(m.difValor) > 50; // hasta 50 pesos = redondeo del reporte
                   return (
                     <tr key={p.id} className={`border-b border-gray-100 ${mal ? "bg-red-50/60" : ""}`}>
                       <td className="py-1.5 pr-2 font-medium text-gray-700">{p.invoice}</td>
+                      <td className={`py-1.5 pr-2 text-xs ${mal ? "font-semibold text-red-700" : "text-gray-600"}`} title={p.vendedor ?? ""}>{nombreCorto(p.vendedor)}</td>
                       <td className="py-1.5 pr-2 text-xs text-gray-500">{p.hora ?? "—"}</td>
                       <td className="py-1.5 pr-2 text-xs text-gray-600">{tarjeta(p.franquicia, p.tipo, p.ultimos4) || "—"}</td>
                       <td className="py-1.5 pr-2 font-mono text-[11px] text-gray-500">{p.autorizacion ?? "—"}</td>
@@ -995,6 +1004,10 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
             {det.sueltas.length === 0 ? (
               <p className="mt-1 text-xs text-gray-400">Ninguna.</p>
             ) : (
+              <>
+              {det.vendedorasDia.length > 0 && (
+                <p className="mt-1 text-xs text-gray-500">No tienen factura, así que no hay vendedora exacta. Ese día vendieron en la tienda: <b>{det.vendedorasDia.map(nombreCorto).join(", ")}</b>.</p>
+              )}
               <table className="mt-2 w-full text-sm">
                 <tbody>
                   {det.sueltas.map((t) => (
@@ -1007,6 +1020,7 @@ function DatafonoDetalleModal({ date, store, storeLabel, onClose }: { date: stri
                   ))}
                 </tbody>
               </table>
+              </>
             )}
           </>
         )}

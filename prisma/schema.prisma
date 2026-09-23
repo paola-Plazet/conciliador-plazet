@@ -77,6 +77,7 @@ model Sale {
   franquicia   String? // VISA / MASTERCARD / AMEX (tarjeta)
   autorizacion String? // código de autorización del datáfono (cruza con Conciliar)
   ultimos4     String? // últimos 4 dígitos de la tarjeta
+  vendedor     String? // quien hizo la venta (Karrot "Seller Name")
 
   @@index([date])
 }

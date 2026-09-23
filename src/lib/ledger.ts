@@ -252,6 +252,7 @@ export async function ingestFiles(
                 franquicia: s.franquicia ?? null,
                 autorizacion: s.autorizacion ?? null,
                 ultimos4: s.ultimos4 ?? null,
+                vendedor: s.vendedor ?? null,
               })),
             })
             .then(() => {}),
