@@ -253,6 +253,8 @@ export async function ingestFiles(
                 autorizacion: s.autorizacion ?? null,
                 ultimos4: s.ultimos4 ?? null,
                 vendedor: s.vendedor ?? null,
+                cliente: s.cliente ?? null,
+                orderType: s.orderType ?? null,
               })),
             })
             .then(() => {}),

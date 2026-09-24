@@ -831,3 +831,10 @@ Next 14 y el conciliador Next 16 — no se fusionan). Pasos:
 - Resumen cruce Natural Light.xlsx
 - Conciliacion mayo 2026.xlsx / junio 2026.xlsx / julio 2026.xlsx
 - Otros medios (Rappi-Addi) 2026.xlsx
+
+## 24-sep-2026 — BODEGA PRINCIPAL (página /principal)
+Desde sep-2026 Elba factura en Karrot location PRINCIPAL la web NL/Plazet, Mercado Libre, empresas y algo de efectivo.
+- `src/lib/principal-cruce.ts` + `/api/principal` + página `/principal` (sidebar "Bodega Principal").
+- Cruce: Mercadopago → MercadopagoEntry (±$300, cobro 7 días antes..1 después, asignación global por puntaje con penalización de canal: Order Type "NL" ↔ web-nl); varias facturas mismo cliente+día = 1 cobro; lo demás → Bancolombia no-QR (QrEntry sin "PAGO QR") o Alianza sin tienda (±$1.000, −7..+60 días). Anuladas por NC (CreditNote storeCode null, por orderReceipt) no se cruzan. Sugerencia "posible" (±2 % / $5.000) para las que no calzan. Al revés: cobros MP web/ML sin factura (los posteriores a la última factura de Karrot salen como "reciente").
+- Datos nuevos: `Sale.cliente` / `Sale.orderType` (parser karrot-pagos lee Customer Name / Order Type del conector) y `MercadopagoEntry.origen` (mercadolibre | web-nl | web-plazet | checkout…) + `detalle` (descripción MP). db push hecho; sep backfill con `scripts/principal-clientes.ts` (JSON del reporte ALL_SALES de PRINCIPAL) y `scripts/principal-mp-sync.ts`.
+- Hallazgos sep: Plazet web 1801–1808 (9 pedidos) SIN factura en Karrot; ML 3-sep $111.082, 4-sep $117.000, 9-sep $39.000, 12-sep $99.708 sin factura; NL11946 y NL12015 sin factura (NL12015 $210.800 ≈ fac 10806 $210.400?); fac 10981 "efectivo" $213.920 llegó por llave Bancolombia (Michel Henry Suárez 23-sep); Zapatoca 9899 $6,7 M sin pago en banco; Isable 9062+9063 sin cobro; 8720 Javier Orjuela sin cobro; efectivo 8895 $72.350 sin consignar.

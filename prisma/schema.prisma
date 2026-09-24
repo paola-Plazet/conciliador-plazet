@@ -78,6 +78,8 @@ model Sale {
   autorizacion String? // código de autorización del datáfono (cruza con Conciliar)
   ultimos4     String? // últimos 4 dígitos de la tarjeta
   vendedor     String? // quien hizo la venta (Karrot "Seller Name")
+  cliente      String? // Karrot "Customer Name" (bodega PRINCIPAL: empresas, web, ML)
+  orderType    String? // Karrot "Order Type" (NL / PLAZET / ...)
 
   @@index([date])
 }
@@ -116,6 +118,8 @@ model MercadopagoEntry {
   bruto   Float // valor de la compra
   neto    Float // monto neto de la operación (tras comisiones y retenciones)
   release String? // fecha de liberación del dinero
+  origen  String? // mercadolibre | checkout (web) | qr | point | otro
+  detalle String? // descripción del cobro en MP (título del producto / pedido)
 
   @@index([date])
 }

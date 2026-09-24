@@ -25,6 +25,8 @@ export interface MpApiEntry {
   bruto: number;
   neto: number;
   release: string | null;
+  origen: string;
+  detalle: string | null;
 }
 
 interface MpPayment {
@@ -38,6 +40,17 @@ interface MpPayment {
   transaction_details?: { net_received_amount?: number };
   money_release_date?: string | null;
   description?: string;
+  order?: { type?: string };
+  point_of_interaction?: { type?: string };
+}
+
+/** De dónde viene el cobro: Mercado Libre, la web de NL / Plazet (Checkout Pro) u otro */
+function origenDe(p: MpPayment): string {
+  if (p.order?.type === "mercadolibre") return "mercadolibre";
+  const d = (p.description ?? "").toLowerCase();
+  if (d.includes("natural light")) return "web-nl";
+  if (d.includes("plazet")) return "web-plazet";
+  return (p.point_of_interaction?.type ?? "otro").toLowerCase();
 }
 
 /** Fecha YYYY-MM-DD en hora Colombia (UTC-5); el ISO de MP trae su propio offset */
@@ -71,6 +84,8 @@ export async function fetchMpPayments(since = MP_SINCE): Promise<MpApiEntry[]> {
         bruto: p.transaction_amount,
         neto: p.transaction_details?.net_received_amount ?? p.transaction_amount,
         release: p.money_release_date ? toColombiaDate(p.money_release_date) : null,
+        origen: origenDe(p),
+        detalle: p.description?.slice(0, 120) ?? null,
       });
     }
     if (offset + limit >= body.paging.total) break;

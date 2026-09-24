@@ -25,6 +25,8 @@ export interface SaleInvoice {
   autorizacion?: string | null;
   ultimos4?: string | null;
   vendedor?: string | null; // quien hizo la venta (solo Karrot)
+  cliente?: string | null; // Karrot Customer Name
+  orderType?: string | null; // Karrot Order Type
 }
 
 /** Un movimiento del extracto de la cuenta de EFECTIVO */
