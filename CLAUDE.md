@@ -102,4 +102,4 @@ Reporte de pendientes por consignar por punto + estado por método de pago (ok/d
   31002645=B3, 31014111=Principal, 31029473=Jardín Plaza.
 
 ## Branding
-Verde Plazet `#3ba55d` (paleta `plazet-50`…`plazet-950` en `globals.css`). Fuente Inter.
+Verde Plazet `#3ba55d` (paleta `plazet-50`…`plazet-950` en `globals.css`). Tipografía igual a la app de Nómina (sep-2026): Manrope en textos (`font-sans`) y All Round Gothic en títulos (`font-display`, h1-h3; archivos en `src/app/fonts/all-round-gothic/`). Menú claro espejo del de Nómina en `components/sidebar.tsx`: en celular el sidebar se oculta y va `MobileHeader` arriba + `MobileNav` (barra inferior con Tablero, Tiendas, Conciliación y Principal + "Más").
