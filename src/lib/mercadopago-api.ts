@@ -9,6 +9,11 @@
 
 export const MP_SINCE = "2026-04-01";
 
+/** Usuario MP de HABBIE SAS: solo son VENTAS los pagos que cobra esta cuenta.
+ * Los demás (collector distinto o vacío) son COMPRAS pagadas con la cuenta
+ * (Skydropx, cargos de Mercado Libre, compras en ML…) y se ignoran. */
+const HABBIE_MP_USER = Number(process.env.MP_USER_ID ?? 3438732386);
+
 const MEDIO: Record<string, string> = {
   credit_card: "Tarjeta de crédito",
   debit_card: "Tarjeta de débito",
@@ -34,6 +39,7 @@ interface MpPayment {
   status: string;
   operation_type: string;
   live_mode: boolean;
+  collector_id?: number;
   date_approved: string | null;
   payment_type_id: string;
   transaction_amount: number;
@@ -75,6 +81,7 @@ export async function fetchMpPayments(since = MP_SINCE): Promise<MpApiEntry[]> {
     const body = (await res.json()) as { results: MpPayment[]; paging: { total: number } };
     for (const p of body.results) {
       if (!p.live_mode || p.operation_type !== "regular_payment") continue;
+      if (p.collector_id !== HABBIE_MP_USER) continue; // compra, no venta
       if (p.status !== "approved" && p.status !== "refunded") continue;
       if (!p.date_approved) continue;
       out.push({
