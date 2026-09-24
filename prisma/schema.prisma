@@ -319,3 +319,16 @@ model Upload {
   rows      Int      @default(0)
   skipped   Int      @default(0) // filas omitidas por caer en mes cerrado
 }
+
+/// Vínculo manual factura de PRINCIPAL ↔ cobro de Mercado Pago (cuando el
+/// cruce automático no lo encuentra: precios distintos, facturas partidas).
+/// Clave: # de factura Karrot (recibo) + opId de MP — sobrevive recargas.
+model PrincipalVinculo {
+  id        Int      @id @default(autoincrement())
+  invoice   String // recibo Karrot (Sale.invoice) de la bodega PRINCIPAL
+  opId      String // operación de Mercado Pago
+  nota      String?
+  createdAt DateTime @default(now())
+
+  @@unique([invoice, opId])
+}

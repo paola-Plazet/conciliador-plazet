@@ -32,6 +32,7 @@ export default function PrincipalPage() {
   const [api, setApi] = useState<PrincipalOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [soloRevisar, setSoloRevisar] = useState(true);
+  const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback((m?: string) => {
     setLoading(true);
@@ -42,6 +43,18 @@ export default function PrincipalPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  async function vincular(method: "POST" | "DELETE", body: object) {
+    setMsg(null);
+    const r = await fetch("/api/principal/vincular", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { setMsg(`⚠ ${d.error ?? "No se pudo guardar."}`); return; }
+    load(api?.month);
+  }
+  const acciones: Acciones = {
+    confirmar: (f) => f.posible && vincular("POST", { invoices: [f.invoice], opId: f.posible.opId, nota: `Confirmado a mano (dif ${cop(f.posible.bruto - f.amount)})` }),
+    deshacer: (f) => vincular("DELETE", { invoice: f.invoice }),
+  };
 
   if (loading && !api) return <div className="p-8 text-sm text-gray-500">Cargando bodega Principal…</div>;
   if (!api) return <div className="p-8 text-sm text-red-600">No se pudo cargar la bodega Principal.</div>;
@@ -79,6 +92,8 @@ export default function PrincipalPage() {
       <p className="mt-2 text-[11px] text-gray-400">
         Datos al día: Karrot hasta {fecha(api.karrotHasta)} · Mercado Pago hasta {fecha(api.mpHasta)} · banco hasta {fecha(api.bancoHasta)}
       </p>
+
+      {msg && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{msg}</div>}
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
         <Kpi label="Facturado (sin anuladas)" value={`${vivas.length} · ${cop(vivas.reduce((a, f) => a + neto(f), 0))}`} />
@@ -173,8 +188,8 @@ export default function PrincipalPage() {
                     <td className="max-w-[180px] truncate py-2 pr-3 text-gray-700" title={f.cliente ?? ""}>{f.cliente ?? "—"}</td>
                     <td className="py-2 pr-3"><CanalChip canal={f.canal} /></td>
                     <td className={`py-2 pr-3 text-right ${f.anulada ? "line-through" : ""}`}>{cop(f.amount)}</td>
-                    <td className="py-2 pr-3 text-xs text-gray-600"><CobroCell f={f} /></td>
-                    <td className="py-2"><Estado f={f} /></td>
+                    <td className="py-2 pr-3 text-xs text-gray-600"><CobroCell f={f} acciones={acciones} /></td>
+                    <td className="py-2"><Estado f={f} acciones={acciones} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -193,11 +208,25 @@ export default function PrincipalPage() {
   );
 }
 
-function CobroCell({ f }: { f: FacturaPrincipal }) {
+interface Acciones {
+  confirmar: (f: FacturaPrincipal) => unknown;
+  deshacer: (f: FacturaPrincipal) => unknown;
+}
+
+function CobroCell({ f, acciones }: { f: FacturaPrincipal; acciones: Acciones }) {
   const c = f.cobro;
   if (f.anulada) return <span>—</span>;
   if (!c) {
-    if (f.posible) return <Posible c={f.posible} />;
+    if (f.posible) {
+      return (
+        <div>
+          <Posible c={f.posible} />
+          <button onClick={() => acciones.confirmar(f)} className="mt-1 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-amber-700 hover:bg-amber-50">
+            Sí, es este cobro
+          </button>
+        </div>
+      );
+    }
     return <span className="text-red-600">—</span>;
   }
   if (c.tipo === "banco") {
@@ -229,8 +258,17 @@ function Posible({ c }: { c: CobroMp }) {
   );
 }
 
-function Estado({ f }: { f: FacturaPrincipal }) {
+function Estado({ f, acciones }: { f: FacturaPrincipal; acciones: Acciones }) {
   if (f.anulada) return <Chip tone="muted" icon={null} text={`anulada (NC ${f.nc})`} />;
+  if (f.manual) {
+    return (
+      <div className="max-w-[240px]">
+        <Chip tone="ok" icon={<Link2 size={12} />} text="vinculado a mano" />
+        <div className="mt-0.5 text-[10px] leading-tight text-gray-500">{f.manual}</div>
+        <button onClick={() => acciones.deshacer(f)} className="mt-0.5 text-[10px] text-gray-400 underline hover:text-red-600">deshacer</button>
+      </div>
+    );
+  }
   if (f.aviso) {
     const tone = f.cobro ? "warn" : "bad";
     return (

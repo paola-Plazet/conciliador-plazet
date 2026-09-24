@@ -58,6 +58,7 @@ export interface FacturaPrincipal {
   anulada: boolean;
   grupo: string[] | null; // otras facturas del mismo cliente y día pagadas con el mismo cobro
   posible: CobroMp | null; // cobro MP parecido (no exacto) para revisar a mano
+  manual: string | null; // nota del vínculo manual (PrincipalVinculo)
 }
 
 export interface PrincipalOut {
@@ -92,7 +93,7 @@ function penalOrigen(orderType: string | null, origen: string | null): number {
 }
 
 export async function conciliarPrincipal(monthParam?: string | null): Promise<PrincipalOut> {
-  const [ventas, mpRows, orders, qr, bank, refs, ncs] = await Promise.all([
+  const [ventas, mpRows, orders, qr, bank, refs, ncs, vinculos] = await Promise.all([
     prisma.sale.findMany({
       where: { bodega: { startsWith: "PRINCIPAL" }, date: { gte: PRINCIPAL_DESDE } },
       orderBy: [{ date: "asc" }, { id: "asc" }],
@@ -103,6 +104,7 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
     prisma.bankEntry.findMany({ where: { date: { gte: addDias(PRINCIPAL_DESDE, -10) }, amount: { gt: 0 } } }),
     prisma.cashReference.findMany(),
     prisma.creditNote.findMany({ where: { storeCode: null, date: { gte: PRINCIPAL_DESDE } } }),
+    prisma.principalVinculo.findMany(),
   ]);
 
   // notas crédito de PRINCIPAL por # de factura (recibo de la venta)
@@ -156,6 +158,25 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
   const bancoUsado = new Set<number>();
   const cobroDe = new Map<number, Cobro>();
 
+  // pase 0: vínculos manuales (factura ↔ cobro MP), antes que todo
+  const grupoDe = new Map<number, string[]>();
+  const manualDe = new Map<number, string>();
+  {
+    const idxOp = new Map(mpRows.map((m, i) => [m.opId, i]));
+    const porOp = new Map<string, typeof ventas>();
+    for (const v of vinculos) {
+      const s = ventas.find((x) => x.invoice === v.invoice);
+      const i = idxOp.get(v.opId);
+      if (!s || i == null) continue;
+      mpUsado.add(i);
+      cobroDe.set(s.id, toMp(mpRows[i]));
+      manualDe.set(s.id, v.nota ?? "vinculado a mano");
+      porOp.set(v.opId, [...(porOp.get(v.opId) ?? []), s]);
+    }
+    for (const g of porOp.values()) {
+      if (g.length > 1) for (const s of g) grupoDe.set(s.id, g.filter((x) => x.id !== s.id).map((x) => x.invoice));
+    }
+  }
   // pase 1: Mercadopago ↔ MP. Asignación GLOBAL por puntaje (fecha, valor y
   // canal) para que una factura de Mercado Libre no le quite el cobro a una web
   {
@@ -177,7 +198,6 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
     }
   }
   // pase 1b: varias facturas del mismo cliente y día pagadas con UN cobro MP
-  const grupoDe = new Map<number, string[]>();
   {
     const grupos = new Map<string, typeof ventas>();
     for (const s of ventas) {
@@ -236,6 +256,7 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
       nc: nc?.num ?? null, anulada,
       grupo: grupoDe.get(s.id) ?? null,
       posible: null,
+      manual: manualDe.get(s.id) ?? null,
     };
   });
 
