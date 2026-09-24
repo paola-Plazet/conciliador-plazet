@@ -109,7 +109,7 @@ export default function PrincipalPage() {
           <FileX2 size={16} className="text-red-500" /> Cobros sin factura en Karrot
         </h2>
         <p className="mt-1 text-[11px] text-gray-500">
-          Plata que entró por Mercado Pago (web o Mercado Libre) y ninguna factura de Principal la usa: hay que facturarla.
+          Plata que entró por Mercado Pago (web o Mercado Libre) sin factura en Karrot. Los pedidos de la web Plazet deberían entrar solos por la integración Shopify → Karrot (a la tienda de donde sale la mercancía); si salen aquí es que no llegaron.
         </p>
         {api.sinFactura.length === 0 ? (
           <p className="mt-3 text-xs text-plazet-700">Todo cobro tiene su factura. ✓</p>
@@ -140,7 +140,7 @@ export default function PrincipalPage() {
                       {c.reciente ? (
                         <Chip tone="muted" icon={<Clock size={12} />} text="reciente: Karrot aún no cargado" />
                       ) : (
-                        <Chip tone="bad" icon={<AlertTriangle size={12} />} text="sin factura" />
+                        <Chip tone="bad" icon={<AlertTriangle size={12} />} text={c.origen === "web-plazet" ? "no llegó de Shopify a Karrot" : "sin factura"} />
                       )}
                     </td>
                   </tr>
