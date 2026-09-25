@@ -59,6 +59,8 @@ export interface FacturaPrincipal {
   grupo: string[] | null; // otras facturas del mismo cliente y día pagadas con el mismo cobro
   posible: CobroMp | null; // cobro MP parecido (no exacto) para revisar a mano
   manual: string | null; // nota del vínculo manual (PrincipalVinculo)
+  bodega: string; // PRINCIPAL | SHOPIFY
+  fe: string | null;
 }
 
 export interface PrincipalOut {
@@ -95,7 +97,7 @@ function penalOrigen(orderType: string | null, origen: string | null): number {
 export async function conciliarPrincipal(monthParam?: string | null): Promise<PrincipalOut> {
   const [ventas, mpRows, orders, qr, bank, refs, ncs, vinculos] = await Promise.all([
     prisma.sale.findMany({
-      where: { bodega: { startsWith: "PRINCIPAL" }, date: { gte: PRINCIPAL_DESDE } },
+      where: { OR: [{ bodega: { startsWith: "PRINCIPAL" } }, { bodega: { startsWith: "SHOPIFY" } }], date: { gte: PRINCIPAL_DESDE } },
       orderBy: [{ date: "asc" }, { id: "asc" }],
     }),
     prisma.mercadopagoEntry.findMany({ where: { date: { gte: addDias(PRINCIPAL_DESDE, -10) } }, orderBy: { date: "asc" } }),
@@ -151,6 +153,8 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
     })),
   ];
 
+  // "Pago Online" = pedido web Plazet que entró solo por la integración Shopify → Karrot (se cobra por MP)
+  const esMpVenta = (s: (typeof ventas)[number]) => /mercado\s*pago|pago online/i.test(metodoDe(s));
   const metodoDe = (s: (typeof ventas)[number]) =>
     s.bodega.includes("·") ? s.bodega.split("·")[1].trim() : s.method === "EFECTIVO" ? "Efectivo" : s.method === "TRANSFERENCIA" ? "Transferencia" : s.method;
 
@@ -182,7 +186,7 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
   {
     const pares: { sid: number; mi: number; sc: number }[] = [];
     for (const s of ventas) {
-      if (!/mercado\s*pago/i.test(metodoDe(s)) || aCobrar(s) <= 1) continue;
+      if (!esMpVenta(s) || aCobrar(s) <= 1) continue;
       mpRows.forEach((m, i) => {
         const da = Math.abs(m.bruto - aCobrar(s));
         const dd = dias(m.date, s.date); // + = factura después del cobro
@@ -201,7 +205,7 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
   {
     const grupos = new Map<string, typeof ventas>();
     for (const s of ventas) {
-      if (cobroDe.has(s.id) || aCobrar(s) <= 1 || !/mercado\s*pago/i.test(metodoDe(s))) continue;
+      if (cobroDe.has(s.id) || aCobrar(s) <= 1 || !esMpVenta(s)) continue;
       if (!s.cliente || /an[oó]nimo/i.test(s.cliente)) continue;
       const k = `${s.date}|${s.cliente.toLowerCase()}`;
       grupos.set(k, [...(grupos.get(k) ?? []), s]);
@@ -243,9 +247,10 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
     const anulada = aCobrar(s) <= 1;
     let aviso: string | null = null;
     if (anulada) aviso = null;
+    else if (s.bodega.startsWith("SHOPIFY") && !s.fe) aviso = cobro ? "Entró de Shopify pero SIN factura electrónica" : "Entró de Shopify sin factura electrónica ni cobro encontrado";
     else if (cobro?.tipo === "banco" && /mercado\s*pago/i.test(metodo)) aviso = `Karrot dice Mercadopago pero llegó por ${cobro.cuenta}: corregir el método`;
     else if (cobro?.tipo === "banco" && metodo === "Efectivo") aviso = `Registrada como efectivo pero llegó por ${cobro.cuenta} (transferencia)`;
-    else if (!cobro && /mercado\s*pago/i.test(metodo)) aviso = "No aparece el cobro en Mercado Pago ni en el banco";
+    else if (!cobro && /mercado\s*pago|pago online/i.test(metodo)) aviso = "No aparece el cobro en Mercado Pago ni en el banco";
     else if (!cobro && metodo === "Efectivo") aviso = "Efectivo sin consignación encontrada";
     else if (!cobro) aviso = "Pago no encontrado en el banco";
     return {
@@ -257,6 +262,8 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
       grupo: grupoDe.get(s.id) ?? null,
       posible: null,
       manual: manualDe.get(s.id) ?? null,
+      bodega: s.bodega.split("·")[0].trim(),
+      fe: s.fe,
     };
   });
 
@@ -272,7 +279,7 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
   // parecido (±2 % o ±$5.000) hasta 10 días antes / 2 después
   const sugerido = new Set<number>();
   for (const f of facturasAll) {
-    if (f.cobro || f.anulada || !/mercado\s*pago/i.test(f.metodo)) continue;
+    if (f.cobro || f.anulada || !/mercado\s*pago|pago online/i.test(f.metodo)) continue;
     const obj = f.amount - (ncDe.get(f.invoice)?.net ?? 0);
     let best = -1;
     let bestScore = Infinity;

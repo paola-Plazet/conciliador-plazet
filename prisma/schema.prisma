@@ -80,6 +80,7 @@ model Sale {
   vendedor     String? // quien hizo la venta (Karrot "Seller Name")
   cliente      String? // Karrot "Customer Name" (bodega PRINCIPAL: empresas, web, ML)
   orderType    String? // Karrot "Order Type" (NL / PLAZET / ...)
+  fe           String? // factura electrónica (P281); ventas SHOPIFY: null = no se emitió
 
   @@index([date])
 }

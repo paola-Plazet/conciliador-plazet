@@ -75,7 +75,7 @@ export default function PrincipalPage() {
             <Warehouse size={20} className="text-plazet-600" /> Bodega Principal
           </h1>
           <p className="mt-1 text-xs text-gray-500">
-            Facturas de Karrot (web NL y Plazet, Mercado Libre, empresas) contra su cobro en Mercado Pago o en el banco.
+            Facturas de Karrot de Principal (web NL, Mercado Libre, empresas) y de SHOPIFY (web Plazet, entran solas) contra su cobro en Mercado Pago o en el banco.
           </p>
         </div>
         {api.months.length > 0 && (
@@ -109,7 +109,7 @@ export default function PrincipalPage() {
           <FileX2 size={16} className="text-red-500" /> Cobros sin factura en Karrot
         </h2>
         <p className="mt-1 text-[11px] text-gray-500">
-          Plata que entró por Mercado Pago (web o Mercado Libre) sin factura en Karrot. Los pedidos de la web Plazet deberían entrar solos por la integración Shopify → Karrot (a la tienda de donde sale la mercancía); si salen aquí es que no llegaron.
+          Plata que entró por Mercado Pago (web o Mercado Libre) sin factura en Karrot. Los pedidos de la web Plazet entran solos a Karrot (ubicación SHOPIFY); los de NL, Mercado Libre y empresas los factura Elba en Principal.
         </p>
         {api.sinFactura.length === 0 ? (
           <p className="mt-3 text-xs text-plazet-700">Todo cobro tiene su factura. ✓</p>
@@ -140,7 +140,7 @@ export default function PrincipalPage() {
                       {c.reciente ? (
                         <Chip tone="muted" icon={<Clock size={12} />} text="reciente: Karrot aún no cargado" />
                       ) : (
-                        <Chip tone="bad" icon={<AlertTriangle size={12} />} text={c.origen === "web-plazet" ? "no llegó de Shopify a Karrot" : "sin factura"} />
+                        <Chip tone="bad" icon={<AlertTriangle size={12} />} text="sin factura" />
                       )}
                     </td>
                   </tr>
@@ -154,7 +154,7 @@ export default function PrincipalPage() {
       {/* facturas */}
       <section className="mt-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-gray-800">Facturas de Principal</h2>
+          <h2 className="text-sm font-semibold text-gray-800">Facturas de Principal y Shopify</h2>
           <div className="flex overflow-hidden rounded-lg border border-gray-300 text-xs">
             <button onClick={() => setSoloRevisar(true)} className={`px-3 py-1.5 ${soloRevisar ? "bg-plazet-600 text-white" : "bg-white text-gray-600"}`}>
               Por revisar ({api.facturas.filter((f) => f.aviso || Math.abs(f.dif) > 500).length})
@@ -184,7 +184,7 @@ export default function PrincipalPage() {
                 {filas.map((f) => (
                   <tr key={f.id} className={`border-b border-gray-100 align-top ${f.anulada ? "text-gray-400" : ""}`}>
                     <td className="py-2 pr-3 text-gray-600">{fecha(f.date)}</td>
-                    <td className="py-2 pr-3 font-medium">{f.invoice}<div className="text-[10px] font-normal text-gray-400">{f.metodo}</div></td>
+                    <td className="py-2 pr-3 font-medium">{f.invoice}<div className="text-[10px] font-normal text-gray-400">{f.bodega === "SHOPIFY" ? "Shopify" : f.metodo}{f.fe ? ` · FE ${f.fe}` : ""}</div></td>
                     <td className="max-w-[180px] truncate py-2 pr-3 text-gray-700" title={f.cliente ?? ""}>{f.cliente ?? "—"}</td>
                     <td className="py-2 pr-3"><CanalChip canal={f.canal} /></td>
                     <td className={`py-2 pr-3 text-right ${f.anulada ? "line-through" : ""}`}>{cop(f.amount)}</td>

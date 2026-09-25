@@ -232,7 +232,7 @@ export async function ingestFiles(
             .deleteMany({
               where: {
                 date: { gte: from, lte: to },
-                source: { notIn: ["linux", "karrot_devolucion"] },
+                source: { notIn: ["linux", "karrot_devolucion", "karrot_shopify"] },
                 OR: openMonths.map((m) => ({ date: { startsWith: m } })),
               },
             })
