@@ -122,7 +122,7 @@ async function detalleQr(store: string, d: DiaDash): Promise<string[]> {
 
 // ── armado ────────────────────────────────────────────────────────────────
 
-interface Fila { key: string; store: string; date: string; canal: string; dif: string; detalle: string[] }
+interface Fila { key: string; store: string; date: string; canal: string; dif: string; detalle: string[]; falta: number; sobra: number }
 
 async function main() {
   const ledger = await computeLedger();
@@ -145,7 +145,7 @@ async function main() {
         // EFECTIVO: diferencia, sin conciliar o vendido y ya vencido sin consignar
         if (e.estado === "DIFERENCIA" || e.estado === "SIN_CONCILIAR" || (e.estado === "PENDIENTE" && !e.enPlazo)) {
           const n = -e.dif; // > 0 = falta
-          filas.push({ key: `${store}|${d.date}|EFE`, store, date: d.date, canal: "Efectivo", dif: n > 0 ? falta(n) : sobra(-n), detalle: await detalleEfectivo(store, d) });
+          filas.push({ key: `${store}|${d.date}|EFE`, store, date: d.date, canal: "Efectivo", dif: n > 0 ? falta(n) : sobra(-n), detalle: await detalleEfectivo(store, d), falta: Math.max(n, 0), sobra: Math.max(-n, 0) });
         }
         // DATÁFONO: cruce exacto transacción a transacción (falta y sobra sin netear).
         // Si ese día falta y sobra LO MISMO no sale (Paola): es el mismo cobro partido o
@@ -154,14 +154,18 @@ async function main() {
         if (!d.tar.sinCargar && !d.tar.cc && (d.tar.falta > 0 || d.tar.sobra > 0) && !tarNeto && !manualTar.has(`${store}|${d.date}`)) {
           // falta y sobra casi iguales (cobro cruzado + redondeo): se muestra solo el neto
           const net = d.tar.falta - d.tar.sobra;
-          const dif = d.tar.falta > 0 && d.tar.sobra > 0 && Math.abs(net) <= 1000
+          const neteado = d.tar.falta > 0 && d.tar.sobra > 0 && Math.abs(net) <= 1000;
+          const dif = neteado
             ? (net > 0 ? falta(net) : sobra(-net))
             : [d.tar.falta > 0 ? falta(d.tar.falta) : "", d.tar.sobra > 0 ? sobra(d.tar.sobra) : ""].filter(Boolean).join(" · ");
-          filas.push({ key: `${store}|${d.date}|TAR`, store, date: d.date, canal: "Datáfono", dif, detalle: await detalleDatafono(store, d.date) });
+          filas.push({
+            key: `${store}|${d.date}|TAR`, store, date: d.date, canal: "Datáfono", dif, detalle: await detalleDatafono(store, d.date),
+            falta: neteado ? Math.max(net, 0) : d.tar.falta, sobra: neteado ? Math.max(-net, 0) : d.tar.sobra,
+          });
         }
         // QR por tienda (pagos del banco asignados a la tienda por valor)
         if (!d.qrSinCargar && Math.abs(d.qrDif) >= 1 && !manualQr.has(d.date)) {
-          filas.push({ key: `${store}|${d.date}|QR`, store, date: d.date, canal: "QR", dif: d.qrDif > 0 ? falta(d.qrDif) : sobra(-d.qrDif), detalle: await detalleQr(store, d) });
+          filas.push({ key: `${store}|${d.date}|QR`, store, date: d.date, canal: "QR", dif: d.qrDif > 0 ? falta(d.qrDif) : sobra(-d.qrDif), detalle: await detalleQr(store, d), falta: Math.max(d.qrDif, 0), sobra: Math.max(-d.qrDif, 0) });
         }
       }
     }
@@ -171,46 +175,97 @@ async function main() {
   const nuevas = filas.filter((f) => !reportadas.has(f.key)).length;
   const primerCorreo = reportadas.size === 0;
 
-  const th = (t: string) => `<th style="text-align:left;padding:6px 8px;background:#f3f4f6;font-size:12px;color:#555">${t}</th>`;
-  const td = (t: string, extra = "") => `<td style="padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top;${extra}">${t}</td>`;
-  let cuerpo = "";
+  // Diseño (sep-2026): igual a la página "Hoy" — la plata arriba, un resumen
+  // por tienda (la que más falta primero) y el detalle de cada una en tarjetas.
+  // Solo estilos en línea y tablas: así se ve igual en Gmail y en el celular.
+  const FUENTE = "font-family:Manrope,'Segoe UI',Arial,Helvetica,sans-serif";
+  const VERDE = "#3BA55D", GRIS = "#6b7280", TENUE = "#9ca3af", LINEA = "#e6e8e6";
   const porTienda = new Map<string, Fila[]>();
   for (const f of filas) porTienda.set(f.store, [...(porTienda.get(f.store) ?? []), f]);
-  if (filas.length === 0) cuerpo += `<p style="color:#15803d"><b>✓ Todo está conciliado.</b> No hay diferencias pendientes.</p>`;
-  for (const [store, fs_] of [...porTienda.entries()].sort((a, b) => (nombres.get(a[0]) ?? a[0]).localeCompare(nombres.get(b[0]) ?? b[0]))) {
-    fs_.sort((a, b) => a.date.localeCompare(b.date) || a.canal.localeCompare(b.canal));
-    cuerpo += `<h3 style="margin:22px 0 6px;font-size:15px;color:#1f2937">${esc(nombres.get(store) ?? store)} <span style="font-weight:normal;color:#6b7280;font-size:13px">(${fs_.length} pendiente${fs_.length > 1 ? "s" : ""})</span></h3>
-<table style="border-collapse:collapse;width:100%;font-size:14px"><tr>${th("Día")}${th("Canal")}${th("Diferencia")}${th("Detalle / quién")}</tr>`;
-    let mesActual = "";
-    for (const f of fs_) {
-      const mes = f.date.slice(0, 7);
-      if (mes !== mesActual) {
-        mesActual = mes;
-        cuerpo += `<tr><td colspan="4" style="padding:8px 8px 2px;font-size:12px;font-weight:bold;color:#3BA55D;text-transform:uppercase">${MESES_LARGO[Number(mes.slice(5)) - 1]}</td></tr>`;
-      }
-      const nueva = !primerCorreo && !reportadas.has(f.key) ? ` <span style="background:#fee2e2;color:${ROJO};font-size:10px;font-weight:bold;padding:1px 5px;border-radius:8px">NUEVA</span>` : "";
-      cuerpo += `<tr>${td(dia(f.date) + nueva, "white-space:nowrap")}${td(f.canal)}${td(f.dif, "white-space:nowrap")}${td(f.detalle.join("<br>"), "font-size:13px")}</tr>`;
+  const totalFalta = filas.reduce((a, f) => a + f.falta, 0);
+  const totalSobra = filas.reduce((a, f) => a + f.sobra, 0);
+  const tiendas = [...porTienda.entries()]
+    .map(([store, fs_]) => ({ store, nombre: nombres.get(store) ?? store, filas: fs_, falta: fs_.reduce((a, f) => a + f.falta, 0), sobra: fs_.reduce((a, f) => a + f.sobra, 0), nuevas: primerCorreo ? 0 : fs_.filter((f) => !reportadas.has(f.key)).length }))
+    .sort((a, b) => b.falta - a.falta || b.sobra - a.sobra);
+  const enlaceTienda = (store: string) => `${APP}/tiendas?store=${store}&amp;tab=dia`;
+  const chipNueva = `<span style="background:#fdecec;color:${ROJO};font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;letter-spacing:.03em">NUEVA</span>`;
+  const kpi = (label: string, valor: string, color: string, nota: string) =>
+    `<td width="33%" style="padding:4px"><div style="border:1px solid ${LINEA};border-radius:12px;padding:12px 14px;background:#fff">
+<div style="font-size:12px;color:${GRIS}">${label}</div>
+<div style="font-size:20px;font-weight:800;color:${color};margin-top:2px">${valor}</div>
+<div style="font-size:11px;color:${TENUE}">${nota}</div></div></td>`;
+
+  let cuerpo = "";
+  if (filas.length === 0) {
+    cuerpo += `<div style="border:1px solid ${LINEA};border-radius:14px;background:#f0faf3;padding:18px;text-align:center;color:#256b3d;font-size:15px"><b>✓ Todo está conciliado.</b><br><span style="font-size:13px">No hay diferencias pendientes en los meses abiertos.</span></div>`;
+  } else {
+    // la plata que importa
+    cuerpo += `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 -4px 14px"><tr>
+${kpi("Falta", cop(totalFalta), totalFalta ? ROJO : "#111", "venta que no llegó al banco")}
+${kpi("Sobra", cop(totalSobra), totalSobra ? AMBAR : "#111", "llegó sin venta que lo explique")}
+${kpi("Pendientes", String(filas.length), "#111", !primerCorreo && nuevas ? `${nuevas} nueva${nuevas > 1 ? "s" : ""} desde ayer` : "sin resolver")}
+</tr></table>`;
+    // resumen por tienda
+    cuerpo += `<div style="border:1px solid ${LINEA};border-radius:14px;background:#fff;overflow:hidden;margin-bottom:18px">
+<div style="padding:12px 16px 6px;font-size:14px;font-weight:700;color:#111">Por tienda</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px">`;
+    for (const t of tiendas) {
+      cuerpo += `<tr><td style="padding:9px 16px;border-top:1px solid #f1f3f2">
+<a href="${enlaceTienda(t.store)}" style="color:#111;text-decoration:none;font-weight:700">${esc(t.nombre)}</a>
+<div style="font-size:11.5px;color:${TENUE}">${t.filas.length} pendiente${t.filas.length > 1 ? "s" : ""}${t.nuevas ? ` · <span style="color:${ROJO};font-weight:700">${t.nuevas} nueva${t.nuevas > 1 ? "s" : ""}</span>` : ""}</div></td>
+<td align="right" style="padding:9px 16px;border-top:1px solid #f1f3f2;white-space:nowrap">
+${t.falta ? `<div style="color:${ROJO};font-weight:700">falta ${cop(t.falta)}</div>` : ""}${t.sobra ? `<div style="color:${AMBAR};font-weight:700;font-size:12px">sobra ${cop(t.sobra)}</div>` : ""}</td></tr>`;
     }
-    cuerpo += `</table>`;
+    cuerpo += `</table></div>`;
+
+    // detalle de cada tienda
+    for (const t of tiendas) {
+      t.filas.sort((a, b) => a.date.localeCompare(b.date) || a.canal.localeCompare(b.canal));
+      cuerpo += `<div style="margin:22px 0 8px"><span style="font-size:16px;font-weight:800;color:#111">${esc(t.nombre)}</span>
+<a href="${enlaceTienda(t.store)}" style="float:right;font-size:12px;color:${VERDE};font-weight:700;text-decoration:none">Ver en el conciliador →</a></div>`;
+      let mesActual = "";
+      for (const f of t.filas) {
+        const mes = f.date.slice(0, 7);
+        if (mes !== mesActual) {
+          mesActual = mes;
+          cuerpo += `<div style="margin:10px 0 6px;font-size:11px;font-weight:700;color:${VERDE};text-transform:uppercase;letter-spacing:.06em">${MESES_LARGO[Number(mes.slice(5)) - 1]}</div>`;
+        }
+        const color = f.falta > 0 ? ROJO : AMBAR;
+        const nueva = !primerCorreo && !reportadas.has(f.key) ? " " + chipNueva : "";
+        cuerpo += `<div style="border:1px solid ${LINEA};border-left:3px solid ${color};border-radius:10px;background:#fff;padding:10px 12px;margin-bottom:8px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="font-size:13.5px;font-weight:700;color:#111">${dia(f.date)} · ${f.canal}${nueva}</td>
+<td align="right" style="font-size:13.5px;white-space:nowrap">${f.dif}</td></tr></table>
+${f.detalle.length ? `<div style="margin-top:5px;font-size:12.5px;line-height:1.5;color:#374151">${f.detalle.join("<br>")}</div>` : ""}</div>`;
+      }
+    }
   }
   if (qrSinTienda.length) {
-    cuerpo += `<h3 style="margin:22px 0 6px;font-size:15px;color:#1f2937">Pagos QR que no se pudieron asignar a una tienda</h3>
-<p style="margin:0 0 4px;font-size:13px;color:#6b7280">El banco no dice de qué tienda es cada QR; estos calzan con ventas de varias tiendas. Se asignan en /tiendas → QR (“¿de qué tienda es?”).</p><ul style="margin:0;padding-left:18px;font-size:14px">`;
-    for (const r of qrSinTienda) cuerpo += `<li>${dia(r.date)} · ${cop(r.amount)} · ${esc(r.payer)} → ${r.stores.map(esc).join(" o ")}</li>`;
-    cuerpo += `</ul>`;
+    cuerpo += `<div style="border:1px solid #e9ddfb;border-radius:14px;background:#f8f4fe;padding:12px 16px;margin-top:22px">
+<div style="font-size:14px;font-weight:700;color:#5b34b0">Pagos QR sin tienda asignada · ${qrSinTienda.length}</div>
+<div style="font-size:12px;color:${GRIS};margin:2px 0 6px">El banco no dice de qué tienda es cada QR y estos calzan con ventas de varias. Se asignan en Tiendas → QR y Mercado Pago.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px">`;
+    for (const r of qrSinTienda)
+      cuerpo += `<tr><td style="padding:4px 0;color:#111">${dia(r.date)} · ${esc(r.payer)}<div style="font-size:11.5px;color:${TENUE}">${r.stores.map(esc).join(" o ")}</div></td><td align="right" style="padding:4px 0;font-weight:700;white-space:nowrap">${cop(r.amount)}</td></tr>`;
+    cuerpo += `</table></div>`;
   }
 
   const cut = ledger.cut;
   const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
-  const resumen = filas.length
-    ? `<p style="margin:0 0 8px"><b>${filas.length} diferencia${filas.length > 1 ? "s" : ""} sin resolver</b>${!primerCorreo && nuevas ? ` (<b style="color:${ROJO}">${nuevas} nueva${nuevas > 1 ? "s" : ""}</b> desde el correo anterior)` : ""}, de los meses abiertos (${abiertos.map((m) => MESES_LARGO[Number(m.slice(5)) - 1]).join(", ")}).</p>`
-    : "";
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:780px;color:#111">
-<h2 style="margin:0 0 4px;color:#3BA55D">Conciliación de tiendas — ${dia(hoy)}</h2>
-<p style="margin:0 0 12px;color:#6b7280;font-size:13px">Datos cargados: ventas Karrot hasta ${cut.sales ? dia(cut.sales) : "—"} · bancos hasta ${cut.bank ? dia(cut.bank) : "—"} · QR hasta ${cut.qr ? dia(cut.qr) : "—"} · datáfono (Credibanco) hasta ${cut.datafono ? dia(cut.datafono) : "—"}. Una diferencia sale de este correo cuando el día cuadra o se acepta en el conciliador.</p>
-${resumen}${cuerpo}
-<p style="margin:22px 0 0;font-size:13px"><a href="${APP}/tiendas" style="color:#3BA55D">Ver el detalle en el conciliador →</a> (clic en la cifra del día para ver factura por factura)</p>
-<p style="margin:8px 0 0;font-size:12px;color:#9ca3af">Correo automático del Conciliador Plazet, todos los días a las 9 am.</p></div>`;
+  const html = `<div style="background:#f6f7f6;padding:18px 10px;${FUENTE}">
+<div style="max-width:640px;margin:0 auto;color:#111">
+<div style="padding:4px 4px 14px">
+<div style="font-size:12px;font-weight:700;color:${VERDE};letter-spacing:.08em;text-transform:uppercase">Conciliaciones · Plazet</div>
+<div style="font-size:22px;font-weight:800;margin-top:2px">Conciliación de tiendas</div>
+<div style="font-size:13px;color:${GRIS};margin-top:2px">${dia(hoy)} · meses abiertos: ${abiertos.map((m) => MESES_LARGO[Number(m.slice(5)) - 1]).join(", ")}</div>
+<div style="font-size:11.5px;color:${TENUE};margin-top:6px">Datos al: ventas ${cut.sales ? dia(cut.sales) : "—"} · bancos ${cut.bank ? dia(cut.bank) : "—"} · QR ${cut.qr ? dia(cut.qr) : "—"} · datáfono ${cut.datafono ? dia(cut.datafono) : "—"}</div>
+</div>
+${cuerpo}
+<div style="text-align:center;margin:26px 0 8px">
+<a href="${APP}" style="display:inline-block;background:${VERDE};color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:11px 22px;border-radius:10px">Abrir el conciliador</a>
+</div>
+<div style="text-align:center;font-size:11.5px;color:${TENUE};line-height:1.5">Una diferencia sale de este correo cuando el día cuadra, se acepta en el conciliador o se cierra el mes.<br>Correo automático del Conciliador Plazet, todos los días a las 9 a. m.</div>
+</div></div>`;
 
   if (HTML_OUT) {
     fs.writeFileSync(HTML_OUT, html);
