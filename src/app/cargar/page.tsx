@@ -69,7 +69,7 @@ export default function CargarPage() {
         title="Cargar archivos"
         subtitle="Sube las ventas de Alegra, el extracto del banco y el reporte del datáfono"
       />
-      <div className="p-8 space-y-6 max-w-4xl">
+      <div className="p-4 sm:p-8 space-y-6 max-w-4xl">
         <div
           onDragOver={(e) => {
             e.preventDefault();

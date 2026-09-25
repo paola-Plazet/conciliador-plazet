@@ -83,7 +83,7 @@ export default function ConciliacionPage() {
     return (
       <>
         <PageHeader title="Conciliación" />
-        <div className="p-8 text-gray-500">Cargando…</div>
+        <div className="p-4 sm:p-8 text-gray-500">Cargando…</div>
       </>
     );
 
@@ -91,7 +91,7 @@ export default function ConciliacionPage() {
     return (
       <>
         <PageHeader title="Conciliación" />
-        <div className="p-8 text-gray-500">
+        <div className="p-4 sm:p-8 text-gray-500">
           No hay datos. Carga archivos primero.
         </div>
       </>
@@ -136,7 +136,7 @@ export default function ConciliacionPage() {
           </button>
         </div>
       </PageHeader>
-      <div className="space-y-4 p-8">
+      <div className="space-y-4 p-4 sm:p-8">
         {closeError && (
           <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {closeError}
@@ -210,7 +210,7 @@ export default function ConciliacionPage() {
             </tbody>
           </table>
           {filtered.length === 0 && (
-            <div className="p-8 text-center text-gray-400">Sin registros con esos filtros</div>
+            <div className="p-4 sm:p-8 text-center text-gray-400">Sin registros con esos filtros</div>
           )}
         </Card>
       </div>

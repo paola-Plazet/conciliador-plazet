@@ -78,7 +78,7 @@ export default function ConfiguracionPage() {
         title="Configuración"
         subtitle="Asigna las referencias del banco a cada tienda y administra los festivos"
       />
-      <div className="grid gap-6 p-8 lg:grid-cols-2">
+      <div className="grid gap-6 p-4 sm:p-8 lg:grid-cols-2">
         <Card>
           <h3 className="font-semibold text-plazet-900">
             Referencias de efectivo → tienda

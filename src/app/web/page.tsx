@@ -121,7 +121,7 @@ export default function WebPage() {
   }
 
   if (loading && !api) {
-    return <div className="p-8 text-sm text-gray-500">Cargando ventas web…</div>;
+    return <div className="p-4 sm:p-8 text-sm text-gray-500">Cargando ventas web…</div>;
   }
 
   const sinDatos = !api || api.months.length === 0;
@@ -165,7 +165,7 @@ export default function WebPage() {
       )}
 
       {sinDatos && (
-        <div className="mt-8 rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+        <div className="mt-8 rounded-xl border border-gray-200 bg-white p-4 sm:p-8 text-center text-sm text-gray-500">
           Aún no hay pedidos sincronizados. Dale a <b>Sincronizar Shopify</b> para traerlos por API.
         </div>
       )}

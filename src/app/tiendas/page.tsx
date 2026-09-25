@@ -4,7 +4,9 @@
 // filtrar a un solo canal (efectivo / datafono / QR / Mercadopago / Rappi /
 // Addi). Tarjetas por canal, gráfico diario y tabla día a día, sin Excel.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { ResumenGeneral } from "@/components/resumen-general";
 import { subirAdjunto, esPdf } from "@/lib/imagen-cliente";
 
 /** Tipos que aceptan los selectores de adjuntos */
@@ -165,13 +167,33 @@ function difTexto(faltante: number): string {
   return e === "cuadra" ? "cuadra" : `${e} ${cop(Math.abs(faltante))}`;
 }
 
+type Tab = "canal" | "dia" | "qrmp" | "notas" | "consolidado";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "canal", label: "Por canal" },
+  { id: "dia", label: "Día a día" },
+  { id: "qrmp", label: "QR y Mercado Pago" },
+  { id: "notas", label: "Notas" },
+  { id: "consolidado", label: "Consolidado" },
+];
+
+// useSearchParams necesita Suspense en Next 16
 export default function TiendasPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-plazet-600">Cargando tablero…</div>}>
+      <TiendasContenido />
+    </Suspense>
+  );
+}
+
+function TiendasContenido() {
+  const sp = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => (TABS.some((t) => t.id === sp.get("tab")) ? (sp.get("tab") as Tab) : "canal"));
   const [api, setApi] = useState<ApiData | null>(null);
   const [month, setMonth] = useState<string>("");
   // rango libre de fechas (varios meses): si está activo manda sobre el mes
   const [rango, setRango] = useState<{ from: string; to: string } | null>(null);
   const [rangoForm, setRangoForm] = useState<{ from: string; to: string }>({ from: "", to: "" });
-  const [store, setStore] = useState<string>("");
+  const [store, setStore] = useState<string>(() => sp.get("store") ?? "");
   const [canal, setCanal] = useState<Canal>("todo");
   const [loading, setLoading] = useState(true);
   const [qrDia, setQrDia] = useState<{ date: string; store?: string; label?: string } | null>(null); // detalle QR abierto
@@ -272,11 +294,11 @@ export default function TiendasPage() {
     return <div className="p-10 text-plazet-600">Aún no hay datos: carga archivos primero.</div>;
 
   return (
-    <div className="px-8 py-6 max-w-6xl">
+    <div className="max-w-6xl px-4 py-5 sm:px-8 sm:py-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Tiendas</h1>
-          <p className="text-sm text-gray-500">Venta vs recaudo por canal, día a día</p>
+          <p className="text-sm text-gray-500">Venta del POS contra lo que llegó al banco, por canal</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* mes (se desactiva cuando hay un rango libre) */}
@@ -313,13 +335,14 @@ export default function TiendasPage() {
         </p>
       )}
 
-      {/* tiendas */}
-      <div className="mt-5 flex flex-wrap gap-2">
+      {/* tiendas (en celular se deslizan de lado) */}
+      {(tab === "canal" || tab === "dia") && (<>
+      <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
         {api.stores.map((s) => (
           <button
             key={s.code}
             onClick={() => setStore(s.code)}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+            className={`flex-shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
               store === s.code ? "bg-plazet-500 text-white shadow" : "bg-white text-gray-600 border border-gray-200 hover:border-plazet-400"
             }`}
           >
@@ -329,12 +352,12 @@ export default function TiendasPage() {
       </div>
 
       {/* canales */}
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
         {CANALES.map((c) => (
           <button
             key={c.id}
             onClick={() => setCanal(c.id)}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+            className={`flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
               canal === c.id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
@@ -343,8 +366,28 @@ export default function TiendasPage() {
         ))}
       </div>
 
+      </>)}
+
+      {/* pestañas */}
+      <div className="-mx-4 mt-5 flex gap-1 overflow-x-auto border-b border-gray-200 px-4 sm:mx-0 sm:px-0">
+        {TABS.map((t) => {
+          const n = t.id === "notas" ? notas.filter((x) => !x.resolved).length : 0;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`-mb-px flex-shrink-0 whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors ${
+                tab === t.id ? "border-plazet-500 text-plazet-700" : "border-transparent text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              {t.label}{n > 0 && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 text-[11px] text-amber-800">{n}</span>}
+            </button>
+          );
+        })}
+      </div>
+
       {/* tarjetas por canal (según filtro) */}
-      {tot && (
+      {tab === "canal" && tot && (
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           {(ver("efectivo") || ver("datafono")) && tot.cc && (
             <CardCanal icon={<Landmark size={18} />} titulo="Centro comercial (efectivo + datáfono)"
@@ -363,7 +406,7 @@ export default function TiendasPage() {
               extra={tot.efePendiente > 0 ? `⏳ En plazo (se consigna el día hábil sig.): ${cop(tot.efePendiente)}` : undefined} />
           )}
           {ver("datafono") && !tot.cc && (
-            <CardCanal icon={<CreditCard size={18} />} titulo="Datafono" venta={tot.tarVenta} recaudo={tot.tarPlink} faltante={tot.tarDif}
+            <CardCanal icon={<CreditCard size={18} />} titulo="Datáfono" venta={tot.tarVenta} recaudo={tot.tarPlink} faltante={tot.tarDif}
               desglose={{ falta: tot.tarFaltaTotal, sobra: tot.tarSobraTotal }}
               extra={tot.tarSinCargar > 0 ? `📄 Falta cargar Plink (llega al ${api.cut.datafono?.slice(8)}/${api.cut.datafono?.slice(5, 7)}): ${cop(tot.tarSinCargar)}` : undefined} />
           )}
@@ -389,7 +432,7 @@ export default function TiendasPage() {
       )}
 
       {/* cortes del centro comercial (Floresta): el efectivo y el datáfono los recauda el centro comercial y los paga por cortes */}
-      {tienda?.cortes && tienda.cortes.length > 0 && (ver("efectivo") || ver("datafono")) && (
+      {tab === "canal" && tienda?.cortes && tienda.cortes.length > 0 && (ver("efectivo") || ver("datafono")) && (
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-700">Cortes del centro comercial — efectivo + datáfono</h2>
           <p className="mt-1 text-xs text-gray-500">
@@ -448,7 +491,7 @@ export default function TiendasPage() {
       )}
 
       {/* gráfico diario (solo canales con recaudo comparable) */}
-      {(canal === "todo" || canal === "efectivo" || canal === "datafono") && (
+      {tab === "canal" && (canal === "todo" || canal === "efectivo" || canal === "datafono") && (
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">
@@ -493,8 +536,28 @@ export default function TiendasPage() {
         </div>
       )}
 
+      {/* día a día: tarjetas en celular */}
+      {tab === "dia" && (
+        <div className="mt-4 space-y-2 md:hidden">
+          {dias
+              .filter((d) => canal === "todo" || montoCanal(d, canal) !== 0 || (canal === "efectivo" && d.efe.venta) || (canal === "datafono" && d.tar.venta) || (canal === "qr" && d.qrBanco))
+              .map((d) => (
+                <TarjetaDia
+                  key={d.date}
+                  d={d}
+                  ver={ver}
+                  onQrClick={(f) => setQrDia({ date: f, store, label: api.stores.find((s) => s.code === store)?.name ?? store })}
+                  onTarClick={(f) => setTarDia({ date: f, store, label: api.stores.find((s) => s.code === store)?.name ?? store })}
+                  onNota={setNotaDe}
+                  nNotas={notasPorDia.get(`${d.date}|${store}`) ?? 0}
+                />
+              ))}
+        </div>
+      )}
+
       {/* tabla día a día (columnas según canal) */}
-      <div className="mt-6 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+      {tab === "dia" && (
+      <div className="mt-6 hidden overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
@@ -502,7 +565,7 @@ export default function TiendasPage() {
               {ver("efectivo") && <th className="px-3 py-3 text-right">Efectivo</th>}
               {ver("efectivo") && <th className="px-3 py-3 text-right">Depósito</th>}
               {ver("efectivo") && <th className="px-3 py-3 text-right">Dif EFE</th>}
-              {ver("datafono") && <th className="px-3 py-3 text-right">Datafono</th>}
+              {ver("datafono") && <th className="px-3 py-3 text-right">Datáfono</th>}
               {ver("datafono") && <th className="px-3 py-3 text-right">Plink</th>}
               {ver("datafono") && <th className="px-3 py-3 text-right">Dif TAR</th>}
               {ver("qr") && <th className="px-3 py-3 text-right">QR venta</th>}
@@ -532,9 +595,10 @@ export default function TiendasPage() {
           </tbody>
         </table>
       </div>
+      )}
 
-      {/* QR empresa (solo en Todo o QR) */}
-      {ver("qr") && (() => {
+      {/* QR empresa */}
+      {tab === "qrmp" && (() => {
         const totVenta = api.qrEmpresa.reduce((a, d) => a + d.venta, 0);
         const totBanco = api.qrEmpresa.reduce((a, d) => a + d.banco, 0);
         const falt = totVenta - totBanco; // + = falta en banco, − = sobra
@@ -625,7 +689,7 @@ export default function TiendasPage() {
       })()}
 
       {/* Mercado Pago empresa (solo en Todo o Mercadopago) */}
-      {ver("mercadopago") && api.mpResumen?.tieneRecaudo && (() => {
+      {tab === "qrmp" && api.mpResumen?.tieneRecaudo && (() => {
         const r = api.mpResumen;
         const falt = r.venta - r.bruto; // + = venta sin cobrar, − = cobros sin venta cargada
         const comision = r.bruto - r.neto;
@@ -697,7 +761,10 @@ export default function TiendasPage() {
         />
       )}
 
-      {notas.length > 0 && (
+      {tab === "notas" && notas.length === 0 && (
+        <p className="mt-6 text-sm text-gray-500">No hay notas de revisión este mes. Se agregan con el 📝 de cada día en <b>Día a día</b>.</p>
+      )}
+      {tab === "notas" && notas.length > 0 && (
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-700">📝 Notas de revisión del mes</h2>
           <p className="mt-1 text-xs text-gray-500">
@@ -743,8 +810,14 @@ export default function TiendasPage() {
         </div>
       )}
 
+      {tab === "consolidado" && (
+        <div className="mt-6">
+          <ResumenGeneral />
+        </div>
+      )}
+
       <p className="mt-4 text-xs text-gray-400">
-        Datos al: ventas {api.cut.sales ?? "—"} · banco {api.cut.bank ?? "—"} · QR {api.cut.qr ?? "—"} · datafono {api.cut.datafono ?? "—"}
+        Datos al: ventas {api.cut.sales ?? "—"} · banco {api.cut.bank ?? "—"} · QR {api.cut.qr ?? "—"} · datáfono {api.cut.datafono ?? "—"}
       </p>
     </div>
   );
@@ -1439,5 +1512,87 @@ function FilaDia({ d, ver, canal, onQrClick, onTarClick, onNota, nNotas = 0 }: {
         </div>
       </td>
     </tr>
+  );
+}
+
+/** Un día en el celular: una línea por canal visible con venta, recaudo y diferencia */
+function TarjetaDia({ d, ver, onQrClick, onTarClick, onNota, nNotas = 0 }: { d: Dia; ver: (c: Canal) => boolean; onQrClick?: (date: string) => void; onTarClick?: (date: string) => void; onNota?: (date: string) => void; nNotas?: number }) {
+  const e = d.efe;
+  const efeEnPlazo = e.estado === "PENDIENTE" && e.enPlazo;
+  const mostrarDifEfe = e.estado !== "AGRUPADO" && e.estado !== "SIN_VENTA" && e.estado !== "CENTRO_COMERCIAL";
+  const tarNeto = d.tar.falta - d.tar.sobra;
+  const lineas: { canal: string; venta: React.ReactNode; recaudo: React.ReactNode; dif: React.ReactNode; tono: Estado | null }[] = [];
+
+  if (ver("efectivo") && (e.venta || e.deposito)) {
+    const tono: Estado | null = efeEnPlazo || !mostrarDifEfe ? null : e.estado === "CUADRA" || e.estado === "MANUAL" ? "cuadra" : estadoDe(-e.dif);
+    lineas.push({
+      canal: "Efectivo",
+      venta: e.venta ? cop(e.venta) : "—",
+      recaudo: e.estado === "CENTRO_COMERCIAL" ? "centro comercial"
+        : e.estado === "AGRUPADO" ? `con ${e.grupo.filter((g) => g !== d.date).map((g) => g.slice(8)).join("+")}`
+        : efeEnPlazo ? "en plazo"
+        : e.estado === "PENDIENTE" ? "sin consignar"
+        : e.deposito != null ? cop(e.deposito) : "—",
+      dif: efeEnPlazo ? "en plazo" : tono ? difTexto(-e.dif) : "",
+      tono,
+    });
+  }
+  if (ver("datafono") && (d.tar.venta || d.tar.plink)) {
+    const tono: Estado | null = d.tar.cc || d.tar.sinCargar ? null : tarNeto === 0 ? "cuadra" : tarNeto > 0 ? "falta" : "sobra";
+    lineas.push({
+      canal: "Datáfono",
+      venta: <button className="underline decoration-dotted underline-offset-2" onClick={() => onTarClick?.(d.date)}>{d.tar.venta ? cop(d.tar.venta) : "—"}</button>,
+      recaudo: d.tar.cc ? "centro comercial" : d.tar.sinCargar ? "sin cargar" : d.tar.plink ? cop(d.tar.plink) : "—",
+      dif: tono ? (tarNeto === 0 ? "cuadra" : tarNeto > 0 ? `falta ${cop(tarNeto)}` : `sobra ${cop(-tarNeto)}`) : "",
+      tono,
+    });
+  }
+  if (ver("qr") && (d.qrVenta || d.qrBanco)) {
+    const tono: Estado | null = d.qrSinCargar ? null : estadoDe(d.qrDif);
+    lineas.push({
+      canal: "QR",
+      venta: <button className="underline decoration-dotted underline-offset-2" onClick={() => onQrClick?.(d.date)}>{d.qrVenta ? cop(d.qrVenta) : "—"}</button>,
+      recaudo: d.qrSinCargar ? "sin cargar" : d.qrBanco ? cop(d.qrBanco) : "—",
+      dif: tono ? difTexto(d.qrDif) : "",
+      tono,
+    });
+  }
+  for (const [c, label] of [["mercadopago", "Mercado Pago"], ["rappi", "Rappi"], ["addi", "Addi"]] as const) {
+    if (ver(c) && d[c]) lineas.push({ canal: label, venta: cop(d[c]), recaudo: "", dif: "", tono: null });
+  }
+  if (lineas.length === 0) return null;
+
+  const tonos = lineas.map((l) => l.tono);
+  const peor = tonos.includes("falta") ? "falta" : tonos.includes("sobra") ? "sobra" : tonos.includes("cuadra") ? "cuadra" : null;
+  const borde = peor === "falta" ? "border-l-red-500" : peor === "sobra" ? "border-l-amber-400" : "border-l-transparent";
+  const colorDif = (t: Estado | null) => (t === "falta" ? "text-red-600 font-semibold" : t === "sobra" ? "text-amber-600 font-semibold" : t === "cuadra" ? "text-plazet-700" : "text-gray-400");
+
+  return (
+    <div className={`rounded-xl border border-l-[3px] border-gray-200 bg-white p-3.5 ${borde}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-gray-900">{diaCorto(d.date)}</span>
+        <div className="flex items-center gap-1.5">
+          {ver("efectivo") && e.qrAlert && (
+            <span className="flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700"><QrCode size={11} /> ¿QR?</span>
+          )}
+          {ver("efectivo") && e.late && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">tardía</span>}
+          <button
+            onClick={() => onNota?.(d.date)}
+            className={`rounded-full px-2 py-0.5 text-[11px] ${nNotas > 0 ? "bg-amber-100 font-semibold text-amber-800" : "bg-gray-100 text-gray-500"}`}
+          >
+            📝{nNotas > 0 ? ` ${nNotas}` : " nota"}
+          </button>
+        </div>
+      </div>
+      <div className="mt-2 space-y-1.5">
+        {lineas.map((l) => (
+          <div key={l.canal} className="grid grid-cols-[5.5rem_1fr_auto] items-baseline gap-2 text-xs tabular-nums">
+            <span className="text-gray-500">{l.canal}</span>
+            <span className="truncate text-gray-900">{l.venta}{l.recaudo !== "" && <span className="text-gray-400"> → {l.recaudo}</span>}</span>
+            <span className={`text-right ${colorDif(l.tono)}`}>{l.dif}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

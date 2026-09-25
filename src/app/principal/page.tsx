@@ -56,8 +56,8 @@ export default function PrincipalPage() {
     deshacer: (f) => vincular("DELETE", { invoice: f.invoice }),
   };
 
-  if (loading && !api) return <div className="p-8 text-sm text-gray-500">Cargando bodega Principal…</div>;
-  if (!api) return <div className="p-8 text-sm text-red-600">No se pudo cargar la bodega Principal.</div>;
+  if (loading && !api) return <div className="p-4 sm:p-8 text-sm text-gray-500">Cargando bodega Principal…</div>;
+  if (!api) return <div className="p-4 sm:p-8 text-sm text-red-600">No se pudo cargar la bodega Principal.</div>;
 
   const vivas = api.facturas.filter((f) => !f.anulada);
   const conCobro = vivas.filter((f) => f.cobro);

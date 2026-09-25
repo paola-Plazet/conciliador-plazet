@@ -9,15 +9,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  LayoutDashboard,
+  Home,
   Store,
-  Upload,
   ListChecks,
   Settings,
   FileSpreadsheet,
   LayoutGrid,
   LogOut,
-  Wallet,
   Lock,
   Globe,
   Warehouse,
@@ -26,18 +24,18 @@ import {
   X,
 } from "lucide-react";
 
-// minRol: quién ve cada sección (VIEWER < EDITOR < ADMIN)
+// minRol: quién ve cada sección (VIEWER < EDITOR < ADMIN). Rediseño sep-2026:
+// agrupado; "Cargar archivos" salió del menú (los carga el robot) y "Resumen
+// general" es la pestaña Consolidado de Tiendas (las rutas siguen existiendo)
 const NAV = [
-  { href: "/", label: "Tablero", icon: LayoutDashboard, minRol: "VIEWER" },
-  { href: "/tiendas", label: "Tiendas", icon: Store, minRol: "VIEWER" },
-  { href: "/resumen", label: "Resumen general", icon: Wallet, minRol: "VIEWER" },
-  { href: "/web", label: "Ventas web", icon: Globe, minRol: "VIEWER" },
-  { href: "/principal", label: "Bodega Principal", icon: Warehouse, minRol: "VIEWER" },
-  { href: "/cargar", label: "Cargar archivos", icon: Upload, minRol: "EDITOR" },
-  { href: "/conciliacion", label: "Conciliación", icon: ListChecks, minRol: "VIEWER" },
-  { href: "/meses", label: "Cierre de mes", icon: Lock, minRol: "EDITOR" },
-  { href: "/configuracion", label: "Configuración", icon: Settings, minRol: "ADMIN" },
-  { href: "/reportes", label: "Reportes", icon: FileSpreadsheet, minRol: "VIEWER" },
+  { href: "/", label: "Hoy", icon: Home, minRol: "VIEWER", grupo: "Revisar" },
+  { href: "/tiendas", label: "Tiendas", icon: Store, minRol: "VIEWER", grupo: "Revisar" },
+  { href: "/web", label: "Ventas web", icon: Globe, minRol: "VIEWER", grupo: "Revisar" },
+  { href: "/principal", label: "Bodega Principal", icon: Warehouse, minRol: "VIEWER", grupo: "Revisar" },
+  { href: "/conciliacion", label: "Conciliación", icon: ListChecks, minRol: "VIEWER", grupo: "Cerrar el mes" },
+  { href: "/meses", label: "Cierre de mes", icon: Lock, minRol: "EDITOR", grupo: "Cerrar el mes" },
+  { href: "/reportes", label: "Reportes", icon: FileSpreadsheet, minRol: "VIEWER", grupo: "Ajustes" },
+  { href: "/configuracion", label: "Configuración", icon: Settings, minRol: "ADMIN", grupo: "Ajustes" },
 ];
 const NIVEL: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
 // En la barra inferior del celular: las más usadas, el resto va en "Más"
@@ -91,11 +89,15 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-4 pt-2">
-        {visibles.map(({ href, label, icon: Icon }) => {
+        {visibles.map(({ href, label, icon: Icon, grupo }, i) => {
           const active = esActivo(pathname, href);
+          const nuevoGrupo = i === 0 || visibles[i - 1].grupo !== grupo;
           return (
+            <div key={href}>
+            {nuevoGrupo && (
+              <p className={`px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 ${i === 0 ? "pt-1" : "pt-4"}`}>{grupo}</p>
+            )}
             <Link
-              key={href}
               href={href}
               className={`group flex items-center gap-3 rounded-[10px] px-3 py-2 text-sm font-medium transition-colors duration-150 ${
                 active
@@ -106,6 +108,7 @@ export function Sidebar() {
               <Icon size={18} className={`shrink-0 ${active ? "text-plazet-600" : "text-gray-400 group-hover:text-gray-500"}`} />
               <span>{label}</span>
             </Link>
+            </div>
           );
         })}
       </nav>

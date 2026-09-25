@@ -35,7 +35,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-plazet-100 bg-white p-5 shadow-sm ${className}`}>
+    <div className={`rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 ${className}`}>
       {children}
     </div>
   );
@@ -74,9 +74,9 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-plazet-100 bg-white px-8 py-5">
+    <div className="flex flex-col gap-3 border-b border-gray-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-8 sm:py-5">
       <div>
-        <h1 className="text-xl font-bold text-plazet-950">{title}</h1>
+        <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{title}</h1>
         {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
       </div>
       {children}

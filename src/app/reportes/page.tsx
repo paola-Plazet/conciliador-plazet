@@ -40,10 +40,10 @@ export default function ReportesPage() {
           <Download size={15} /> Exportar todo
         </a>
       </PageHeader>
-      <div className="p-8">
+      <div className="p-4 sm:p-8">
         <Card className="p-0 overflow-x-auto">
           {loading ? (
-            <div className="p-8 text-gray-400">Cargando…</div>
+            <div className="p-4 sm:p-8 text-gray-400">Cargando…</div>
           ) : months.length === 0 ? (
             <div className="p-10 text-center text-gray-400">
               <FileSpreadsheet className="mx-auto mb-2" size={36} />
