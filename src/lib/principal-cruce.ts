@@ -66,8 +66,14 @@ export interface FacturaPrincipal {
 export interface PrincipalOut {
   months: string[];
   month: string;
+  /** solo la bodega PRINCIPAL (lo que factura Elba) */
   facturas: FacturaPrincipal[];
+  /** cobros MP de NL / Mercado Libre sin factura */
   sinFactura: CobroMp[];
+  /** ventas web Plazet de la ubicación SHOPIFY: se muestran en Ventas web (regla Paola 24-sep-2026) */
+  shopify: FacturaPrincipal[];
+  /** cobros MP de la web Plazet sin factura en Karrot (no llegaron por la integración) */
+  sinFacturaShopify: CobroMp[];
   mpHasta: string | null;
   bancoHasta: string | null;
   karrotHasta: string | null;
@@ -300,11 +306,15 @@ export async function conciliarPrincipal(monthParam?: string | null): Promise<Pr
   const month = monthParam && months.includes(monthParam) ? monthParam : months[0] ?? PRINCIPAL_DESDE.slice(0, 7);
 
   const max = (xs: string[]) => (xs.length ? xs.reduce((a, b) => (a > b ? a : b)) : null);
+  const delMes = (fs: FacturaPrincipal[]) =>
+    fs.filter((f) => f.date.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date) || b.invoice.localeCompare(a.invoice));
   return {
     months,
     month,
-    facturas: facturasAll.filter((f) => f.date.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date) || b.invoice.localeCompare(a.invoice)),
-    sinFactura: sinFacturaAll.filter((c) => c.date.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date)),
+    facturas: delMes(facturasAll).filter((f) => f.bodega !== "SHOPIFY"),
+    sinFactura: sinFacturaAll.filter((c) => c.date.startsWith(month) && c.origen !== "web-plazet").sort((a, b) => b.date.localeCompare(a.date)),
+    shopify: delMes(facturasAll).filter((f) => f.bodega === "SHOPIFY"),
+    sinFacturaShopify: sinFacturaAll.filter((c) => c.date.startsWith(month) && c.origen === "web-plazet").sort((a, b) => b.date.localeCompare(a.date)),
     mpHasta: max(mpRows.map((m) => m.date)),
     bancoHasta: max([...qr.map((q) => q.date), ...bank.map((b) => b.date)]),
     karrotHasta,

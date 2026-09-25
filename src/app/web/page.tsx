@@ -5,6 +5,7 @@
 // Mercado Pago (compartida por las dos tiendas, cargada por archivo).
 
 import { useCallback, useEffect, useState } from "react";
+import type { PrincipalOut } from "@/lib/principal-cruce";
 import { Globe, RefreshCw, AlertTriangle, CheckCircle2, Undo2 } from "lucide-react";
 
 interface MpMatch {
@@ -71,6 +72,8 @@ export default function WebPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // facturación en Karrot de la web Plazet (ubicación SHOPIFY): sale del cruce de Principal
+  const [karrot, setKarrot] = useState<PrincipalOut | null>(null);
 
   const load = useCallback((m?: string) => {
     setLoading(true);
@@ -80,6 +83,7 @@ export default function WebPage() {
         setApi(d);
         if (d.month) setMonth(d.month);
         setLoading(false);
+        return fetch(`/api/principal${d.month ? `?month=${d.month}` : ""}`).then((r) => (r.ok ? r.json() : null)).then(setKarrot);
       })
       .catch(() => setLoading(false));
   }, []);
@@ -200,6 +204,8 @@ export default function WebPage() {
               </div>
             )}
 
+            {key === "PLAZET" && karrot && <FacturacionKarrot k={karrot} />}
+
             {shop.rows.length === 0 ? (
               <p className="mt-4 text-xs text-gray-400">Sin pedidos pagados este mes.</p>
             ) : (
@@ -288,5 +294,48 @@ function Chip({ tone, icon, text }: { tone: "ok" | "bad" | "warn" | "muted"; ico
     <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${cls}`}>
       {icon} {text}
     </span>
+  );
+}
+
+/** Web Plazet en Karrot: los pedidos entran solos por la integración Shopify →
+ * Karrot (ubicación SHOPIFY). Aquí se ve si cada uno tiene factura electrónica
+ * y su cobro, y qué cobros de la web no llegaron a Karrot. */
+function FacturacionKarrot({ k }: { k: PrincipalOut }) {
+  const vivas = k.shopify.filter((f) => !f.anulada);
+  const revisar = vivas.filter((f) => f.aviso);
+  const sinFac = k.sinFacturaShopify.filter((c) => !c.reciente);
+  if (vivas.length === 0 && k.sinFacturaShopify.length === 0) return null;
+  const ok = revisar.length === 0 && sinFac.length === 0;
+  return (
+    <div className={`mt-4 rounded-lg border p-3 text-sm ${ok ? "border-plazet-200 bg-plazet-50/50" : "border-amber-200 bg-amber-50/60"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-semibold text-gray-800">Facturación en Karrot</span>
+        <span className="text-xs text-gray-500">
+          {vivas.length} factura{vivas.length === 1 ? "" : "s"} · {vivas.length - revisar.length} en orden
+        </span>
+      </div>
+      {ok ? (
+        <p className="mt-1 text-xs text-plazet-700">Todos los pedidos tienen factura electrónica y su cobro. ✓</p>
+      ) : (
+        <ul className="mt-2 space-y-1 text-xs">
+          {revisar.map((f) => (
+            <li key={f.id} className="flex flex-wrap items-center gap-x-2">
+              <AlertTriangle size={12} className="text-amber-600" />
+              <span className="font-medium text-gray-800">{f.invoice}</span>
+              <span className="text-gray-500">{fecha(f.date)} · {cop(f.amount)}{f.cliente ? ` · ${f.cliente}` : ""}</span>
+              <span className="text-amber-800">{f.aviso}</span>
+            </li>
+          ))}
+          {sinFac.map((c) => (
+            <li key={c.opId} className="flex flex-wrap items-center gap-x-2">
+              <AlertTriangle size={12} className="text-red-600" />
+              <span className="font-medium text-gray-800">{c.pedido ?? `MP ${c.opId}`}</span>
+              <span className="text-gray-500">{fecha(c.date)} · {cop(c.bruto)}</span>
+              <span className="text-red-700">cobrado pero no llegó de Shopify a Karrot</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

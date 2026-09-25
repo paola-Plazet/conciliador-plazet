@@ -75,7 +75,7 @@ export default function PrincipalPage() {
             <Warehouse size={20} className="text-plazet-600" /> Bodega Principal
           </h1>
           <p className="mt-1 text-xs text-gray-500">
-            Facturas de Karrot de Principal (web NL, Mercado Libre, empresas) y de SHOPIFY (web Plazet, entran solas) contra su cobro en Mercado Pago o en el banco.
+            Facturas de Karrot de Principal (web NL, Mercado Libre, empresas) contra su cobro en Mercado Pago o en el banco. Lo de la web Plazet (Shopify) está en Ventas web.
           </p>
         </div>
         {api.months.length > 0 && (
@@ -109,7 +109,7 @@ export default function PrincipalPage() {
           <FileX2 size={16} className="text-red-500" /> Cobros sin factura en Karrot
         </h2>
         <p className="mt-1 text-[11px] text-gray-500">
-          Plata que entró por Mercado Pago (web o Mercado Libre) sin factura en Karrot. Los pedidos de la web Plazet entran solos a Karrot (ubicación SHOPIFY); los de NL, Mercado Libre y empresas los factura Elba en Principal.
+          Plata que entró por Mercado Pago (web NL o Mercado Libre) sin factura en Karrot: la debe facturar Elba en Principal.
         </p>
         {api.sinFactura.length === 0 ? (
           <p className="mt-3 text-xs text-plazet-700">Todo cobro tiene su factura. ✓</p>
@@ -154,7 +154,7 @@ export default function PrincipalPage() {
       {/* facturas */}
       <section className="mt-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-gray-800">Facturas de Principal y Shopify</h2>
+          <h2 className="text-sm font-semibold text-gray-800">Facturas de Principal</h2>
           <div className="flex overflow-hidden rounded-lg border border-gray-300 text-xs">
             <button onClick={() => setSoloRevisar(true)} className={`px-3 py-1.5 ${soloRevisar ? "bg-plazet-600 text-white" : "bg-white text-gray-600"}`}>
               Por revisar ({api.facturas.filter((f) => f.aviso || Math.abs(f.dif) > 500).length})
